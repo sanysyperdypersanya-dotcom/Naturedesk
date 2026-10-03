@@ -1,0 +1,10 @@
+{
+  "name": "Remix NatureDesk",
+  "description": "A personalized desktop dashboard showing real-time weather, time, and daily facts against beautiful, immersive nature backgrounds.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
