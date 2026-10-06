@@ -146,12 +146,15 @@ export const MusicPlayerWidget: React.FC<MusicPlayerWidgetProps> = ({ onPlayback
     return `${String(mins).padStart(2, '0')}:${String(rem).padStart(2, '0')}`;
   };
 
+  const onPlaybackChangeRef = useRef(onPlaybackChange);
+  onPlaybackChangeRef.current = onPlaybackChange;
+
   // Notify parent for collapsed widget summary
   useEffect(() => {
-    if (onPlaybackChange && currentTrack) {
-      onPlaybackChange(isPlaying, currentTrack.title);
+    if (onPlaybackChangeRef.current && currentTrack) {
+      onPlaybackChangeRef.current(isPlaying, currentTrack.title);
     }
-  }, [isPlaying, currentTrack, onPlaybackChange]);
+  }, [isPlaying, currentTrack.title]);
 
   // Stop generative synth
   const stopSynth = useCallback(() => {

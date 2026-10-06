@@ -27,6 +27,51 @@ interface InteractiveWeatherCanvasProps {
   ) => void;
 }
 
+export const EFFECT_LABELS: Record<Exclude<NatureEffectType, 'auto' | 'wallpaper_match'>, string> = {
+  rain: 'Живий дощ',
+  thunderstorm: 'Гроза та блискавки',
+  snow: 'Снігопад',
+  mist: 'Гірський туман',
+  leaves: 'Осінній листопад',
+  sakura: 'Пелюстки сакури',
+  aurora: 'Північне сяйво',
+  shooting_stars: 'Зорепад у небі',
+  sunbeams: 'Сонячне проміння',
+  fireflies: 'Нічні світлячки',
+  none: 'Без ефектів',
+};
+
+export function resolveNatureEffect(
+  effectType: NatureEffectType,
+  weather: CurrentWeather | null,
+  recommendedWallpaperEffect?: string
+): {
+  type: Exclude<NatureEffectType, 'auto' | 'wallpaper_match'>;
+  label: string;
+} {
+  let resolved: Exclude<NatureEffectType, 'auto' | 'wallpaper_match'>;
+  if (effectType === 'wallpaper_match') {
+    resolved = (recommendedWallpaperEffect as any) || 'aurora';
+  } else if (effectType !== 'auto') {
+    resolved = effectType;
+  } else if (!weather) {
+    resolved = (recommendedWallpaperEffect as any) || 'sunbeams';
+  } else {
+    const icon = weather.condition.iconName;
+    const isDay = weather.isDaytime;
+    if (icon.includes('lightning')) resolved = 'thunderstorm';
+    else if (icon.includes('snow')) resolved = 'snow';
+    else if (icon.includes('rain') || icon.includes('drizzle')) resolved = 'rain';
+    else if (icon.includes('fog') || icon.includes('cloud')) resolved = 'mist';
+    else if (!isDay) resolved = 'shooting_stars';
+    else resolved = 'sunbeams';
+  }
+  return {
+    type: resolved,
+    label: EFFECT_LABELS[resolved] || 'Сонячне проміння',
+  };
+}
+
 export const InteractiveWeatherCanvas: React.FC<InteractiveWeatherCanvasProps> = ({
   weather,
   effectType,
@@ -35,6 +80,9 @@ export const InteractiveWeatherCanvas: React.FC<InteractiveWeatherCanvasProps> =
   onAutoEffectResolved,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const onAutoEffectResolvedRef = useRef(onAutoEffectResolved);
+  onAutoEffectResolvedRef.current = onAutoEffectResolved;
+
   const mouseRef = useRef<{ x: number; y: number; vx: number; vy: number; active: boolean }>({
     x: -1000,
     y: -1000,
@@ -43,45 +91,17 @@ export const InteractiveWeatherCanvas: React.FC<InteractiveWeatherCanvasProps> =
     active: false,
   });
 
-  // Resolve active effect based on weather or wallpaper if 'auto' / 'wallpaper_match'
-  const resolveActiveEffect = (): Exclude<NatureEffectType, 'auto' | 'wallpaper_match'> => {
-    if (effectType === 'wallpaper_match') {
-      return (recommendedWallpaperEffect as any) || 'aurora';
-    }
-    if (effectType !== 'auto') return effectType;
-    if (!weather) return (recommendedWallpaperEffect as any) || 'sunbeams';
-
-    const icon = weather.condition.iconName;
-    const isDay = weather.isDaytime;
-
-    if (icon.includes('lightning')) return 'thunderstorm';
-    if (icon.includes('snow')) return 'snow';
-    if (icon.includes('rain') || icon.includes('drizzle')) return 'rain';
-    if (icon.includes('fog') || icon.includes('cloud')) return 'mist';
-    if (!isDay) return 'shooting_stars';
-    return 'sunbeams';
-  };
-
-  const activeEffect = resolveActiveEffect();
+  const { type: activeEffect, label: activeLabel } = resolveNatureEffect(
+    effectType,
+    weather,
+    recommendedWallpaperEffect
+  );
 
   useEffect(() => {
-    if (onAutoEffectResolved) {
-      const names: Record<Exclude<NatureEffectType, 'auto' | 'wallpaper_match'>, string> = {
-        rain: 'Живий дощ',
-        thunderstorm: 'Гроза та блискавки',
-        snow: 'Снігопад',
-        mist: 'Гірський туман',
-        leaves: 'Осінній листопад',
-        sakura: 'Пелюстки сакури',
-        aurora: 'Північне сяйво',
-        shooting_stars: 'Зорепад у небі',
-        sunbeams: 'Сонячне проміння',
-        fireflies: 'Нічні світлячки',
-        none: 'Без ефектів',
-      };
-      onAutoEffectResolved(names[activeEffect], activeEffect);
+    if (onAutoEffectResolvedRef.current) {
+      onAutoEffectResolvedRef.current(activeLabel, activeEffect);
     }
-  }, [activeEffect, onAutoEffectResolved]);
+  }, [activeEffect, activeLabel]);
 
   useEffect(() => {
     const canvas = canvasRef.current;

@@ -16,10 +16,10 @@ import { AmbientSoundPanel } from './components/AmbientSoundPanel';
 import { MusicPlayerWidget } from './components/MusicPlayerWidget';
 import { ZenModeView } from './components/ZenModeView';
 import { DraggableWidget } from './components/DraggableWidget';
-import { ResolvedNatureEffect } from './components/WidgetWeatherOverlay';
 import {
   InteractiveWeatherCanvas,
   NatureEffectType,
+  resolveNatureEffect,
 } from './components/InteractiveWeatherCanvas';
 import { NatureEffectsBar } from './components/NatureEffectsBar';
 import {
@@ -93,8 +93,6 @@ export default function App() {
   // Interactive Nature Effect State (default to rain so soaked widgets & falling droplets from widget tops are immediately visible, or switchable anytime)
   const [natureEffect, setNatureEffect] = useState<NatureEffectType>('rain');
   const [effectIntensity, setEffectIntensity] = useState<number>(1.0);
-  const [resolvedEffectLabel, setResolvedEffectLabel] = useState<string>('Живий дощ');
-  const [resolvedEffectType, setResolvedEffectType] = useState<ResolvedNatureEffect>('rain');
   const [isEffectsDrawerOpen, setIsEffectsDrawerOpen] = useState(false);
 
   // Weather State
@@ -102,6 +100,20 @@ export default function App() {
   const [weather, setWeather] = useState<CurrentWeather | null>(null);
   const [weatherLoading, setWeatherLoading] = useState(false);
   const [weatherError, setWeatherError] = useState<string | null>(null);
+
+  const { type: resolvedEffectType, label: resolvedEffectLabel } = resolveNatureEffect(
+    natureEffect,
+    weather,
+    currentWallpaper.recommendedEffect
+  );
+
+  const handleMusicPlaybackChange = useCallback((playing: boolean, title: string) => {
+    setMusicStatus((prev) =>
+      prev.isPlaying === playing && prev.title === title
+        ? prev
+        : { isPlaying: playing, title }
+    );
+  }, []);
 
   // Subtle 3D Mouse Parallax for Brave Background
   useEffect(() => {
@@ -451,13 +463,7 @@ export default function App() {
             icon={<Music className="w-3.5 h-3.5 text-amber-300" />}
           >
             <MusicPlayerWidget
-              onPlaybackChange={(playing, title) =>
-                setMusicStatus((prev) =>
-                  prev.isPlaying === playing && prev.title === title
-                    ? prev
-                    : { isPlaying: playing, title }
-                )
-              }
+              onPlaybackChange={handleMusicPlaybackChange}
             />
           </DraggableWidget>
         );
@@ -689,10 +695,6 @@ export default function App() {
         effectType={natureEffect}
         recommendedWallpaperEffect={currentWallpaper.recommendedEffect}
         intensity={effectIntensity}
-        onAutoEffectResolved={(label, resolvedType) => {
-          setResolvedEffectLabel(label);
-          setResolvedEffectType(resolvedType);
-        }}
       />
 
       {/* Zen Mode View */}
