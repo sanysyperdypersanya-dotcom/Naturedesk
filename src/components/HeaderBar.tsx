@@ -2,8 +2,8 @@ import React from 'react';
 import { Volume2, VolumeX, Maximize2, Minimize2, Image, Sparkles } from 'lucide-react';
 
 interface HeaderBarProps {
-  activeTab: 'all' | 'weather' | 'facts' | 'intentions' | 'sounds';
-  setActiveTab: (tab: 'all' | 'weather' | 'facts' | 'intentions' | 'sounds') => void;
+  activeTab: 'all' | 'weather' | 'facts' | 'sounds';
+  setActiveTab: (tab: 'all' | 'weather' | 'facts' | 'sounds') => void;
   isZenMode: boolean;
   setIsZenMode: (val: boolean) => void;
   isSoundPlaying: boolean;
@@ -43,7 +43,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
         </a>
       </div>
 
-      {/* Zone 2: 4-5 clean text navigation links */}
+      {/* Zone 2: 4 clean text navigation links */}
       <nav className="hidden md:flex items-center gap-7 text-xs lg:text-sm font-medium tracking-wide text-stone-300">
         <button
           onClick={() => setActiveTab('all')}
@@ -74,16 +74,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           }`}
         >
           Факти та Мудрість
-        </button>
-        <button
-          onClick={() => setActiveTab('intentions')}
-          className={`transition-colors pb-0.5 whitespace-nowrap cursor-pointer ${
-            activeTab === 'intentions'
-              ? 'text-white border-b border-amber-400 font-semibold'
-              : 'hover:text-white'
-          }`}
-        >
-          Ритм дня
         </button>
         <button
           onClick={() => setActiveTab('sounds')}

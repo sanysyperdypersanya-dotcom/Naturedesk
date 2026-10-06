@@ -59,3 +59,148 @@
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.35);
 }
+
+/* Animated SVG Weather Icon Keyframes */
+@keyframes svgSunSpin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes svgSunSpinReverse {
+  0% {
+    transform: rotate(360deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes svgSunPulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.14);
+    opacity: 1;
+  }
+}
+
+@keyframes svgCloudDrift {
+  0%, 100% {
+    transform: translateX(-2.5px) translateY(0px);
+  }
+  50% {
+    transform: translateX(3px) translateY(-1.2px);
+  }
+}
+
+@keyframes svgCloudDriftAlt {
+  0%, 100% {
+    transform: translateX(2.5px) translateY(-0.8px);
+  }
+  50% {
+    transform: translateX(-3px) translateY(1px);
+  }
+}
+
+@keyframes svgRainFall {
+  0% {
+    transform: translateY(-6px) translateX(2px);
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translateY(12px) translateX(-3px);
+    opacity: 0;
+  }
+}
+
+@keyframes svgSnowFall {
+  0% {
+    transform: translateY(-6px) translateX(-1.5px) rotate(0deg);
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  50% {
+    transform: translateY(3px) translateX(2px) rotate(90deg);
+  }
+  100% {
+    transform: translateY(12px) translateX(-1.5px) rotate(180deg);
+    opacity: 0;
+  }
+}
+
+@keyframes svgLightningFlash {
+  0%, 100% {
+    opacity: 0.15;
+    transform: scale(0.96);
+  }
+  8% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+  14% {
+    opacity: 0.25;
+  }
+  20% {
+    opacity: 1;
+    transform: scale(1.03);
+  }
+  32% {
+    opacity: 0.15;
+    transform: scale(0.96);
+  }
+}
+
+@keyframes svgStarTwinkle {
+  0%, 100% {
+    opacity: 0.25;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
+@keyframes svgMoonRock {
+  0%, 100% {
+    transform: rotate(-5deg) translateY(0px);
+  }
+  50% {
+    transform: rotate(5deg) translateY(-1.5px);
+  }
+}
+
+@keyframes svgFogSlide {
+  0%, 100% {
+    transform: translateX(-4px);
+    opacity: 0.45;
+  }
+  50% {
+    transform: translateX(4px);
+    opacity: 0.9;
+  }
+}
+
+@keyframes svgWindDash {
+  0% {
+    stroke-dashoffset: 24;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+

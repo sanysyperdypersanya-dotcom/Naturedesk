@@ -13,14 +13,60 @@ import { EclipseAndCelestialWidget } from './components/EclipseAndCelestialWidge
 import { FactCard } from './components/FactCard';
 import { WallpaperSwitcher } from './components/WallpaperSwitcher';
 import { AmbientSoundPanel } from './components/AmbientSoundPanel';
-import { DailyIntentions } from './components/DailyIntentions';
 import { ZenModeView } from './components/ZenModeView';
+import { DraggableWidget } from './components/DraggableWidget';
 import {
   InteractiveWeatherCanvas,
   NatureEffectType,
 } from './components/InteractiveWeatherCanvas';
 import { NatureEffectsBar } from './components/NatureEffectsBar';
-import { Sparkles, Image, Compass, Info, Heart, Volume2, Wind } from 'lucide-react';
+import {
+  Image,
+  Compass,
+  Volume2,
+  Wind,
+  CloudSun,
+  CloudRain,
+  Moon,
+  Orbit,
+  BookOpen,
+  RotateCcw,
+  ChevronUp,
+  ChevronDown,
+  Move,
+} from 'lucide-react';
+
+export type WidgetId =
+  | 'weather'
+  | 'precipitation'
+  | 'moon'
+  | 'starmap'
+  | 'eclipses'
+  | 'facts'
+  | 'wallpapers'
+  | 'sounds';
+
+const DEFAULT_WIDGET_ORDER: WidgetId[] = [
+  'weather',
+  'precipitation',
+  'moon',
+  'starmap',
+  'eclipses',
+  'facts',
+  'wallpapers',
+  'sounds',
+];
+
+const DEFAULT_WIDE_WIDGETS: Record<WidgetId, boolean> = {
+  weather: false,
+  precipitation: false,
+  moon: false,
+  starmap: false,
+  eclipses: true,
+  facts: false,
+  wallpapers: false,
+  sounds: true,
+};
 
 export default function App() {
   const [currentWallpaper, setCurrentWallpaper] = useState<NatureWallpaper>(WALLPAPERS[0]);
@@ -28,7 +74,7 @@ export default function App() {
   const [autoCycleInterval, setAutoCycleInterval] = useState(0); // 0 = off
   const [overlayOpacity, setOverlayOpacity] = useState(0.45);
   const [isZenMode, setIsZenMode] = useState(false);
-  const [activeTab, setActiveTab] = useState<'all' | 'weather' | 'facts' | 'intentions' | 'sounds'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'weather' | 'facts' | 'sounds'>('all');
   const [isMasterSoundActive, setIsMasterSoundActive] = useState(false);
 
   // Interactive Nature Effect State
@@ -43,6 +89,169 @@ export default function App() {
   const [weatherLoading, setWeatherLoading] = useState(false);
   const [weatherError, setWeatherError] = useState<string | null>(null);
 
+  // Widget Order, Collapse, Span & Free Offset State
+  const [widgetOrder, setWidgetOrder] = useState<WidgetId[]>(() => {
+    try {
+      const saved = localStorage.getItem('naturedesk_widget_order_v1');
+      if (saved) {
+        const parsed = JSON.parse(saved) as WidgetId[];
+        if (
+          Array.isArray(parsed) &&
+          DEFAULT_WIDGET_ORDER.every((id) => parsed.includes(id))
+        ) {
+          return parsed;
+        }
+      }
+    } catch {}
+    return DEFAULT_WIDGET_ORDER;
+  });
+
+  const [collapsedWidgets, setCollapsedWidgets] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem('naturedesk_collapsed_widgets_v1');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return {};
+  });
+
+  const [wideWidgets, setWideWidgets] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem('naturedesk_wide_widgets_v1');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return DEFAULT_WIDE_WIDGETS;
+  });
+
+  const [freePositionMode, setFreePositionMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('naturedesk_free_mode_v1') === 'true';
+    } catch {}
+    return false;
+  });
+
+  const [widgetOffsets, setWidgetOffsets] = useState<Record<string, { x: number; y: number }>>(
+    () => {
+      try {
+        const saved = localStorage.getItem('naturedesk_widget_offsets_v1');
+        if (saved) return JSON.parse(saved);
+      } catch {}
+      return {};
+    }
+  );
+
+  const [draggedWidgetId, setDraggedWidgetId] = useState<WidgetId | null>(null);
+  const [dragOverWidgetId, setDragOverWidgetId] = useState<WidgetId | null>(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('naturedesk_widget_order_v1', JSON.stringify(widgetOrder));
+    } catch {}
+  }, [widgetOrder]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('naturedesk_collapsed_widgets_v1', JSON.stringify(collapsedWidgets));
+    } catch {}
+  }, [collapsedWidgets]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('naturedesk_wide_widgets_v1', JSON.stringify(wideWidgets));
+    } catch {}
+  }, [wideWidgets]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('naturedesk_free_mode_v1', String(freePositionMode));
+    } catch {}
+  }, [freePositionMode]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('naturedesk_widget_offsets_v1', JSON.stringify(widgetOffsets));
+    } catch {}
+  }, [widgetOffsets]);
+
+  const handleToggleCollapse = (id: string) => {
+    setCollapsedWidgets((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
+  };
+
+  const handleToggleWide = (id: string) => {
+    setWideWidgets((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
+  };
+
+  const handleSaveOffset = useCallback((id: string, offset: { x: number; y: number }) => {
+    setWidgetOffsets((prev) => ({
+      ...prev,
+      [id]: offset,
+    }));
+  }, []);
+
+  const handleStartPointerDrag = useCallback((id: string) => {
+    setDraggedWidgetId(id as WidgetId);
+  }, []);
+
+  const handleHoverTargetWidget = useCallback((targetId: string | null) => {
+    setDragOverWidgetId(targetId as WidgetId | null);
+  }, []);
+
+  const handleEndPointerDrag = useCallback((sourceId: string, targetId: string | null) => {
+    if (targetId && sourceId !== targetId) {
+      setWidgetOrder((prev) => {
+        const next = [...prev];
+        const fromIdx = next.indexOf(sourceId as WidgetId);
+        const toIdx = next.indexOf(targetId as WidgetId);
+        if (fromIdx === -1 || toIdx === -1) return prev;
+        next.splice(fromIdx, 1);
+        next.splice(toIdx, 0, sourceId as WidgetId);
+        return next;
+      });
+    }
+    setDraggedWidgetId(null);
+    setDragOverWidgetId(null);
+  }, []);
+
+  const handleMoveOffset = (id: string, direction: 'up' | 'down') => {
+    setWidgetOrder((prev) => {
+      const idx = prev.indexOf(id as WidgetId);
+      if (idx === -1) return prev;
+      const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+      if (targetIdx < 0 || targetIdx >= prev.length) return prev;
+      const next = [...prev];
+      const temp = next[idx];
+      next[idx] = next[targetIdx];
+      next[targetIdx] = temp;
+      return next;
+    });
+  };
+
+  const allCollapsed = DEFAULT_WIDGET_ORDER.every((id) => collapsedWidgets[id]);
+
+  const handleToggleCollapseAll = () => {
+    if (allCollapsed) {
+      setCollapsedWidgets({});
+    } else {
+      const next: Record<string, boolean> = {};
+      DEFAULT_WIDGET_ORDER.forEach((id) => {
+        next[id] = true;
+      });
+      setCollapsedWidgets(next);
+    }
+  };
+
+  const handleResetLayout = () => {
+    setWidgetOrder(DEFAULT_WIDGET_ORDER);
+    setCollapsedWidgets({});
+    setWideWidgets(DEFAULT_WIDE_WIDGETS);
+    setWidgetOffsets({});
+  };
+
   // Load weather
   const loadWeather = useCallback(async (city: CityOption) => {
     setWeatherLoading(true);
@@ -50,7 +259,7 @@ export default function App() {
     try {
       const data = await fetchLiveWeather(city.lat, city.lng, city.name, city.country);
       setWeather(data);
-    } catch (err: any) {
+    } catch {
       setWeatherError('Не вдалося отримати поточні дані погоди');
     } finally {
       setWeatherLoading(false);
@@ -84,7 +293,6 @@ export default function App() {
         }
       },
       () => {
-        // Fallback to default
         setWeatherLoading(false);
       }
     );
@@ -131,14 +339,219 @@ export default function App() {
     return `Ефект: ${map[natureEffect]}`;
   };
 
+  const sharedDragProps = (id: WidgetId) => ({
+    id,
+    isCollapsed: !!collapsedWidgets[id],
+    onToggleCollapse: handleToggleCollapse,
+    isWide: !!wideWidgets[id],
+    onToggleWide: handleToggleWide,
+    freePositionMode,
+    savedOffset: widgetOffsets[id] || { x: 0, y: 0 },
+    onSaveOffset: handleSaveOffset,
+    onStartPointerDrag: handleStartPointerDrag,
+    onHoverTargetWidget: handleHoverTargetWidget,
+    onEndPointerDrag: handleEndPointerDrag,
+    onMoveOffset: handleMoveOffset,
+    isDragging: draggedWidgetId === id,
+    isDragOver: dragOverWidgetId === id,
+  });
+
+  const renderWidgetById = (id: WidgetId) => {
+    switch (id) {
+      case 'weather':
+        return (
+          <DraggableWidget
+            key="weather"
+            {...sharedDragProps('weather')}
+            title="Погода в реальному часі"
+            summary={
+              weather
+                ? `${weather.temp > 0 ? `+${weather.temp}` : weather.temp}°C · ${weather.city}`
+                : currentCity.name
+            }
+            icon={<CloudSun className="w-3.5 h-3.5 text-amber-300" />}
+          >
+            <WeatherCard
+              weather={weather}
+              loading={weatherLoading}
+              onRefresh={() => loadWeather(currentCity)}
+              onSelectCity={(city) => setCurrentCity(city)}
+              onDetectLocation={handleDetectLocation}
+            />
+          </DraggableWidget>
+        );
+
+      case 'precipitation':
+        return (
+          <DraggableWidget
+            key="precipitation"
+            {...sharedDragProps('precipitation')}
+            title="Опади та Метео-радар"
+            summary={
+              weather
+                ? `Ймовірність ${weather.precipitationProbability}% · ${weather.precipitation} мм`
+                : 'Прогноз 12 год'
+            }
+            icon={<CloudRain className="w-3.5 h-3.5 text-sky-400" />}
+          >
+            <PrecipitationWidget
+              weather={weather}
+              onTriggerRainEffect={() => setNatureEffect('rain')}
+            />
+          </DraggableWidget>
+        );
+
+      case 'moon':
+        return (
+          <DraggableWidget
+            key="moon"
+            {...sharedDragProps('moon')}
+            title="Вигляд Місяця та Фази"
+            summary="Місячний календар"
+            icon={<Moon className="w-3.5 h-3.5 text-amber-300" />}
+          >
+            <MoonPhaseWidget />
+          </DraggableWidget>
+        );
+
+      case 'starmap':
+        return (
+          <DraggableWidget
+            key="starmap"
+            {...sharedDragProps('starmap')}
+            title="Інтерактивна Зоряна Карта"
+            summary={currentCity.name}
+            icon={<Compass className="w-3.5 h-3.5 text-indigo-300" />}
+          >
+            <StarMapWidget
+              cityName={currentCity.name}
+              lat={currentCity.lat}
+              lng={currentCity.lng}
+            />
+          </DraggableWidget>
+        );
+
+      case 'eclipses':
+        return (
+          <DraggableWidget
+            key="eclipses"
+            {...sharedDragProps('eclipses')}
+            title="Повні Затемнення, Зорепади та Планети"
+            summary="Найближче повне: 2 серп. 2027"
+            icon={<Orbit className="w-3.5 h-3.5 text-amber-300" />}
+          >
+            <EclipseAndCelestialWidget />
+          </DraggableWidget>
+        );
+
+      case 'facts':
+        return (
+          <DraggableWidget
+            key="facts"
+            {...sharedDragProps('facts')}
+            title="Факти та Мудрість дня"
+            summary="Пізнавальна картка"
+            icon={<BookOpen className="w-3.5 h-3.5 text-amber-300" />}
+          >
+            <FactCard />
+          </DraggableWidget>
+        );
+
+      case 'wallpapers':
+        return (
+          <DraggableWidget
+            key="wallpapers"
+            {...sharedDragProps('wallpapers')}
+            title="Шпалери природи"
+            summary={currentWallpaper.title}
+            icon={<Image className="w-3.5 h-3.5 text-amber-300" />}
+          >
+            <div className="glass-panel rounded-2xl p-5 md:p-6 transition-all flex flex-col justify-between h-full">
+              <div>
+                <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                  <div className="flex items-center gap-2">
+                    <Image className="w-4 h-4 text-amber-300" />
+                    <h3 className="text-sm font-semibold text-white">Колекція фонів природи</h3>
+                  </div>
+                  <button
+                    onClick={() => setIsWallpaperDrawerOpen(true)}
+                    className="text-xs text-amber-300 hover:underline cursor-pointer"
+                  >
+                    Всі фони ({WALLPAPERS.length})
+                  </button>
+                </div>
+
+                <div className="mt-4 space-y-2">
+                  {WALLPAPERS.slice(0, 3).map((wp) => (
+                    <button
+                      key={wp.id}
+                      onClick={() => setCurrentWallpaper(wp)}
+                      className={`w-full flex items-center gap-3 p-2 rounded-xl border text-left transition-all cursor-pointer ${
+                        currentWallpaper.id === wp.id
+                          ? 'bg-white/15 border-amber-400/50 ring-1 ring-amber-400/30'
+                          : 'bg-white/5 border-white/5 hover:border-white/20'
+                      }`}
+                    >
+                      <img
+                        src={wp.imageSrc}
+                        alt={wp.title}
+                        referrerPolicy="no-referrer"
+                        className="w-12 h-10 object-cover rounded-lg shrink-0"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-semibold text-white truncate">{wp.title}</div>
+                        <div className="text-[10px] text-stone-400 truncate">{wp.location}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between text-xs text-stone-400">
+                <span>Поточний краєвид:</span>
+                <span className="text-stone-200 font-medium truncate max-w-[160px]">
+                  {currentWallpaper.location}
+                </span>
+              </div>
+            </div>
+          </DraggableWidget>
+        );
+
+      case 'sounds':
+        return (
+          <DraggableWidget
+            key="sounds"
+            {...sharedDragProps('sounds')}
+            title="Звуковий супровід природи"
+            summary={isMasterSoundActive ? 'Відтворюється' : 'Дощ, ліс, багаття, океан'}
+            icon={<Volume2 className="w-3.5 h-3.5 text-amber-300" />}
+          >
+            <AmbientSoundPanel
+              isMasterActive={isMasterSoundActive}
+              onToggleMaster={handleToggleMasterSound}
+            />
+          </DraggableWidget>
+        );
+    }
+  };
+
+  const visibleWidgetsForTab = (): WidgetId[] => {
+    if (activeTab === 'all') return widgetOrder;
+    if (activeTab === 'weather') {
+      const weatherSet: WidgetId[] = ['weather', 'precipitation', 'moon', 'starmap', 'eclipses'];
+      return widgetOrder.filter((id) => weatherSet.includes(id));
+    }
+    if (activeTab === 'facts') return ['facts'];
+    if (activeTab === 'sounds') return ['sounds'];
+    return widgetOrder;
+  };
+
   return (
     <div className="relative min-h-screen w-full bg-stone-950 text-stone-100 flex flex-col justify-between overflow-x-hidden">
-      {/* Dynamic Nature Background with Fallback & Measured Contrast */}
+      {/* Dynamic Nature Background */}
       <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
-        {/* Styled CSS Fallback Container */}
         <div className="absolute inset-0 bg-gradient-to-br from-stone-900 via-stone-950 to-emerald-950/40" />
 
-        {/* Real Generated High-Fidelity Nature Wallpaper */}
         <img
           src={currentWallpaper.imageSrc}
           alt={currentWallpaper.title}
@@ -147,7 +560,6 @@ export default function App() {
           style={{ opacity: 1 }}
         />
 
-        {/* Dynamic Dark Gradient Dimmer for Readability */}
         <div
           className="absolute inset-0 transition-opacity duration-500"
           style={{
@@ -157,14 +569,13 @@ export default function App() {
           }}
         />
 
-        {/* Ambient Subtle Accent Glow */}
         <div
           className="absolute -top-32 left-1/2 -translate-x-1/2 w-[700px] h-[400px] rounded-full blur-[140px] pointer-events-none transition-colors duration-1000"
           style={{ backgroundColor: currentWallpaper.palette.ambientGlow }}
         />
       </div>
 
-      {/* Interactive Weather & Nature Canvas (Rain, Snow, Mist, Leaves, Wind) */}
+      {/* Interactive Weather & Nature Canvas */}
       <InteractiveWeatherCanvas
         weather={weather}
         effectType={natureEffect}
@@ -172,7 +583,7 @@ export default function App() {
         onAutoEffectResolved={(label) => setResolvedEffectLabel(label)}
       />
 
-      {/* Zen Mode View (Fullscreen Minimalist Experience) */}
+      {/* Zen Mode View */}
       {isZenMode ? (
         <ZenModeView
           wallpaper={currentWallpaper}
@@ -186,7 +597,6 @@ export default function App() {
         />
       ) : (
         <div className="relative z-20 flex flex-col min-h-screen">
-          {/* Top Bar Contract compliant navigation */}
           <HeaderBar
             activeTab={activeTab}
             setActiveTab={setActiveTab}
@@ -200,7 +610,6 @@ export default function App() {
             effectLabel={getHeaderEffectDisplay()}
           />
 
-          {/* Main Desktop Container (max-w-7xl 1440px wide baseline) */}
           <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 flex flex-col justify-between">
             {/* Centerpiece Clock & Date */}
             <ClockCenterpiece
@@ -208,206 +617,78 @@ export default function App() {
               sunsetTime={weather?.sunset}
             />
 
-            {/* Quick Interactive Nature Control Ribbon */}
+            {/* Quick Interactive Nature & Jelly Window Control Ribbon */}
             <div className="my-2 flex items-center justify-center">
-              <div className="glass-panel-subtle px-4 py-2 rounded-2xl border border-white/10 flex flex-wrap items-center justify-center gap-3 text-xs">
+              <div className="glass-panel-subtle px-4 py-2 rounded-2xl border border-white/10 flex flex-wrap items-center justify-center gap-2.5 text-xs">
                 <div className="flex items-center gap-2 text-stone-300">
                   <Wind className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
                   <span>
-                    Живий ефект фону: <strong>{resolvedEffectLabel}</strong>
-                    {natureEffect === 'auto' && (
-                      <span className="text-stone-400 font-normal"> (синхронізовано з погодою)</span>
-                    )}
+                    Живий ефект: <strong>{resolvedEffectLabel}</strong>
                   </span>
                 </div>
 
-                <div className="flex items-center gap-1.5">
+                <div className="flex flex-wrap items-center justify-center gap-1.5">
                   <button
                     onClick={() => setIsEffectsDrawerOpen(true)}
                     className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-400/30 rounded-lg transition-colors cursor-pointer"
                   >
-                    Змінити ефект атмосфери
+                    Ефект атмосфери
                   </button>
                   <button
                     onClick={() => setIsWallpaperDrawerOpen(true)}
                     className="px-2.5 py-1 glass-pill hover:bg-white/15 text-stone-200 rounded-lg transition-colors cursor-pointer"
                   >
-                    Змінити фото природи
+                    Фото природи
+                  </button>
+                  <button
+                    onClick={() => setFreePositionMode(!freePositionMode)}
+                    className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer flex items-center gap-1 ${
+                      freePositionMode
+                        ? 'bg-emerald-500/25 text-emerald-200 border border-emerald-400/40'
+                        : 'glass-pill hover:bg-white/15 text-stone-200'
+                    }`}
+                    title="У вільному режимі вікна залишаються в тих координатах, куди ви їх перетягнули"
+                  >
+                    <Move className="w-3 h-3" />
+                    <span>{freePositionMode ? 'Вільне положення: Увімк' : 'Режим: Пружна сітка'}</span>
+                  </button>
+                  <button
+                    onClick={handleToggleCollapseAll}
+                    className="px-2.5 py-1 glass-pill hover:bg-white/15 text-stone-200 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                    title="Скрутити або розгорнути всі віджети одночасно"
+                  >
+                    {allCollapsed ? (
+                      <>
+                        <ChevronDown className="w-3.5 h-3.5 text-amber-300" />
+                        <span>Розгорнути всі</span>
+                      </>
+                    ) : (
+                      <>
+                        <ChevronUp className="w-3.5 h-3.5 text-stone-300" />
+                        <span>Скрутити всі</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={handleResetLayout}
+                    className="px-2.5 py-1 glass-pill hover:bg-white/15 text-stone-300 hover:text-white rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                    title="Скинути порядок та координати вікон за замовчуванням"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Скинути вікна</span>
                   </button>
                 </div>
               </div>
             </div>
 
-            {/* Dynamic View Sections */}
-            {activeTab === 'all' && (
-              <div className="mt-4 space-y-6">
-                {/* Row 1: 2-Column Desktop Grid for Weather & Precipitation Radar */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
-                  <div className="h-full">
-                    <WeatherCard
-                      weather={weather}
-                      loading={weatherLoading}
-                      onRefresh={() => loadWeather(currentCity)}
-                      onSelectCity={(city) => setCurrentCity(city)}
-                      onDetectLocation={handleDetectLocation}
-                    />
-                  </div>
-
-                  <div className="h-full">
-                    <PrecipitationWidget
-                      weather={weather}
-                      onTriggerRainEffect={() => setNatureEffect('rain')}
-                    />
-                  </div>
-                </div>
-
-                {/* Row 2: Moon Phase & Interactive Star Map */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
-                  <div className="h-full">
-                    <MoonPhaseWidget />
-                  </div>
-
-                  <div className="h-full">
-                    <StarMapWidget
-                      cityName={currentCity.name}
-                      lat={currentCity.lat}
-                      lng={currentCity.lng}
-                    />
-                  </div>
-                </div>
-
-                {/* Row 3: Total Eclipses, Meteor Showers & Planets */}
-                <div>
-                  <EclipseAndCelestialWidget />
-                </div>
-
-                {/* Row 4: Facts, Intentions & Quick Nature Selector */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
-                  <div className="h-full">
-                    <FactCard />
-                  </div>
-                  <div className="h-full">
-                    <DailyIntentions />
-                  </div>
-                  <div className="h-full">
-                    <div className="glass-panel rounded-2xl p-5 md:p-6 transition-all flex flex-col justify-between h-full">
-                      <div>
-                        <div className="flex items-center justify-between pb-3 border-b border-white/10">
-                          <div className="flex items-center gap-2">
-                            <Image className="w-4 h-4 text-amber-300" />
-                            <h3 className="text-sm font-semibold text-white">Шпалери природи</h3>
-                          </div>
-                          <button
-                            onClick={() => setIsWallpaperDrawerOpen(true)}
-                            className="text-xs text-amber-300 hover:underline cursor-pointer"
-                          >
-                            Всі фони ({WALLPAPERS.length})
-                          </button>
-                        </div>
-
-                        <div className="mt-4 space-y-2">
-                          {WALLPAPERS.slice(0, 3).map((wp) => (
-                            <button
-                              key={wp.id}
-                              onClick={() => setCurrentWallpaper(wp)}
-                              className={`w-full flex items-center gap-3 p-2 rounded-xl border text-left transition-all cursor-pointer ${
-                                currentWallpaper.id === wp.id
-                                  ? 'bg-white/15 border-amber-400/50 ring-1 ring-amber-400/30'
-                                  : 'bg-white/5 border-white/5 hover:border-white/20'
-                              }`}
-                            >
-                              <img
-                                src={wp.imageSrc}
-                                alt={wp.title}
-                                referrerPolicy="no-referrer"
-                                className="w-12 h-10 object-cover rounded-lg shrink-0"
-                              />
-                              <div className="min-w-0 flex-1">
-                                <div className="text-xs font-semibold text-white truncate">
-                                  {wp.title}
-                                </div>
-                                <div className="text-[10px] text-stone-400 truncate">
-                                  {wp.location}
-                                </div>
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between text-xs text-stone-400">
-                        <span>Поточний краєвид:</span>
-                        <span className="text-stone-200 font-medium truncate max-w-[130px]">
-                          {currentWallpaper.location}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Ambient Sound Bar */}
-                <div className="mt-6">
-                  <AmbientSoundPanel
-                    isMasterActive={isMasterSoundActive}
-                    onToggleMaster={handleToggleMasterSound}
-                  />
-                </div>
-              </div>
+            {weatherError && (
+              <div className="my-2 text-center text-xs text-amber-300">{weatherError}</div>
             )}
 
-            {/* Weather & Sky Tab */}
-            {activeTab === 'weather' && (
-              <div className="mt-4 w-full space-y-6">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
-                  <WeatherCard
-                    weather={weather}
-                    loading={weatherLoading}
-                    onRefresh={() => loadWeather(currentCity)}
-                    onSelectCity={(city) => setCurrentCity(city)}
-                    onDetectLocation={handleDetectLocation}
-                  />
-                  <PrecipitationWidget
-                    weather={weather}
-                    onTriggerRainEffect={() => setNatureEffect('rain')}
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
-                  <MoonPhaseWidget />
-                  <StarMapWidget
-                    cityName={currentCity.name}
-                    lat={currentCity.lat}
-                    lng={currentCity.lng}
-                  />
-                </div>
-
-                <EclipseAndCelestialWidget />
-              </div>
-            )}
-
-            {/* Facts Tab */}
-            {activeTab === 'facts' && (
-              <div className="mt-4 max-w-4xl mx-auto w-full space-y-6">
-                <FactCard />
-              </div>
-            )}
-
-            {/* Daily Intentions / Rhythm Tab */}
-            {activeTab === 'intentions' && (
-              <div className="mt-4 max-w-4xl mx-auto w-full space-y-6">
-                <DailyIntentions />
-              </div>
-            )}
-
-            {/* Ambient Sounds Tab */}
-            {activeTab === 'sounds' && (
-              <div className="mt-4 max-w-4xl mx-auto w-full space-y-6">
-                <AmbientSoundPanel
-                  isMasterActive={isMasterSoundActive}
-                  onToggleMaster={handleToggleMasterSound}
-                />
-              </div>
-            )}
+            {/* Draggable & Collapsible Jelly Widgets Grid */}
+            <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+              {visibleWidgetsForTab().map((id) => renderWidgetById(id))}
+            </div>
           </main>
 
           {/* Desktop Footer */}
@@ -416,7 +697,7 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <span className="font-serif-display font-medium text-stone-300">СЬОГОДНІ</span>
                 <span aria-hidden="true">·</span>
-                <span>Твій затишний щоденний простір для життя та натхнення</span>
+                <span>Тягніть будь-яке вікно мишкою чи пальцем за верхню панель із пружною анімацією желе</span>
               </div>
               <div className="flex items-center gap-4 text-stone-400">
                 <button

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Minimize2, Image, Volume2, VolumeX, Sparkles } from 'lucide-react';
 import { NatureWallpaper, CurrentWeather } from '../types';
+import { AnimatedWeatherIcon } from './AnimatedWeatherIcon';
 
 interface ZenModeViewProps {
   wallpaper: NatureWallpaper;
@@ -107,6 +108,12 @@ export const ZenModeView: React.FC<ZenModeViewProps> = ({
 
         {weather && (
           <div className="mt-4 flex items-center gap-3 text-stone-300 text-sm sm:text-base font-medium glass-panel-subtle px-4 py-1.5 rounded-full border border-white/10">
+            <AnimatedWeatherIcon
+              iconName={weather.condition.iconName}
+              size="sm"
+              windSpeed={weather.windSpeed}
+              temp={weather.temp}
+            />
             <span>{weather.city}</span>
             <span aria-hidden="true" className="text-stone-500">·</span>
             <span className="text-amber-300 font-data-mono">{weather.temp > 0 ? `+${weather.temp}` : weather.temp}°C</span>

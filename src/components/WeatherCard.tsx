@@ -1,25 +1,8 @@
 import React, { useState } from 'react';
-import {
-  MapPin,
-  RefreshCw,
-  Search,
-  Sun,
-  Moon,
-  CloudSun,
-  Cloud,
-  CloudRain,
-  CloudDrizzle,
-  CloudSnow,
-  CloudLightning,
-  Wind,
-  Droplets,
-  Gauge,
-  Compass,
-  Check,
-  X,
-} from 'lucide-react';
+import { MapPin, RefreshCw, Search, Compass, X } from 'lucide-react';
 import { CityOption, CurrentWeather } from '../types';
-import { POPULAR_CITIES, searchCities } from '../services/weatherService';
+import { POPULAR_CITIES, searchCities, mapWmoCode } from '../services/weatherService';
+import { AnimatedWeatherIcon, AnimatedMetricIcon } from './AnimatedWeatherIcon';
 
 interface WeatherCardProps {
   weather: CurrentWeather | null;
@@ -28,6 +11,18 @@ interface WeatherCardProps {
   onSelectCity: (city: CityOption) => void;
   onDetectLocation: () => void;
 }
+
+const WEATHER_PREVIEW_MODES: { id: string; label: string; iconName: string; desc: string }[] = [
+  { id: 'auto', label: 'Жива погода', iconName: '', desc: '' },
+  { id: 'sun', label: 'Ясно', iconName: 'sun', desc: 'Чисте сонячне небо' },
+  { id: 'cloud-sun', label: 'Мінлива', iconName: 'cloud-sun', desc: 'Сонце крізь легкі хмари' },
+  { id: 'cloud', label: 'Похмуро', iconName: 'cloud', desc: 'Подвійний шар хмар' },
+  { id: 'cloud-rain', label: 'Дощ', iconName: 'cloud-rain', desc: 'Анімовані краплі дощу' },
+  { id: 'cloud-lightning', label: 'Гроза', iconName: 'cloud-lightning', desc: 'Блискавка та грозовий фронт' },
+  { id: 'cloud-snow', label: 'Сніг', iconName: 'cloud-snow', desc: 'Кристалічні сніжинки' },
+  { id: 'cloud-fog', label: 'Туман', iconName: 'cloud-fog', desc: 'Плавні пасма туману' },
+  { id: 'moon', label: 'Ніч', iconName: 'moon', desc: 'Зоряне небо та серп Місяця' },
+];
 
 export const WeatherCard: React.FC<WeatherCardProps> = ({
   weather,
@@ -40,6 +35,7 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<CityOption[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [previewIconMode, setPreviewIconMode] = useState<string>('auto');
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,29 +46,21 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({
     setIsSearching(false);
   };
 
-  const renderWeatherIcon = (iconName: string, className = 'w-6 h-6') => {
-    switch (iconName) {
-      case 'sun':
-        return <Sun className={`${className} text-amber-300 animate-spin-slow`} />;
-      case 'moon':
-        return <Moon className={`${className} text-indigo-300`} />;
-      case 'cloud-sun':
-        return <CloudSun className={`${className} text-amber-200`} />;
-      case 'cloud':
-        return <Cloud className={`${className} text-stone-300`} />;
-      case 'cloud-drizzle':
-        return <CloudDrizzle className={`${className} text-sky-300`} />;
-      case 'cloud-rain':
-      case 'cloud-rain-heavy':
-        return <CloudRain className={`${className} text-sky-400`} />;
-      case 'cloud-snow':
-        return <CloudSnow className={`${className} text-slate-100`} />;
-      case 'cloud-lightning':
-        return <CloudLightning className={`${className} text-yellow-300`} />;
-      default:
-        return <CloudSun className={`${className} text-amber-200`} />;
-    }
-  };
+  const activePreview = WEATHER_PREVIEW_MODES.find((m) => m.id === previewIconMode);
+  const displayedIconName =
+    previewIconMode === 'auto' || !activePreview?.iconName
+      ? weather?.condition.iconName || 'cloud-sun'
+      : activePreview.iconName;
+
+  const displayedLabel =
+    previewIconMode === 'auto' || !activePreview?.iconName
+      ? weather?.condition.label || 'Мінлива хмарність'
+      : activePreview.label;
+
+  const displayedDescription =
+    previewIconMode === 'auto' || !activePreview?.iconName
+      ? weather?.condition.description || 'Плавна зміна атмосферного стану'
+      : activePreview.desc;
 
   return (
     <div className="glass-panel rounded-2xl p-5 md:p-6 transition-all duration-300 flex flex-col justify-between h-full">
@@ -115,7 +103,7 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({
         {/* Current Weather Main View */}
         {weather ? (
           <div className="mt-4">
-            <div className="flex items-start justify-between">
+            <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="flex items-baseline gap-1 font-data-mono">
                   <span className="text-5xl sm:text-6xl font-light text-white tracking-tight">
@@ -125,30 +113,72 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({
                 </div>
                 <div className="text-xs text-stone-400 mt-1">
                   Відчувається як{' '}
-                  <span className="text-stone-200 font-medium">
+                  <span className="text-stone-200 font-medium font-data-mono">
                     {weather.feelsLike > 0 ? `+${weather.feelsLike}` : weather.feelsLike}°C
                   </span>
                 </div>
+                <div className="text-[11px] text-stone-400 mt-1 font-data-mono">
+                  Анімація реагує на вітер ({weather.windSpeed} км/г) та темп.
+                </div>
               </div>
 
+              {/* Animated SVG Weather Scene Box */}
               <div className="flex flex-col items-end text-right">
-                <div className="p-2.5 rounded-xl bg-white/5 border border-white/10 mb-1.5">
-                  {renderWeatherIcon(weather.condition.iconName, 'w-8 h-8')}
+                <div className="p-2.5 rounded-2xl bg-gradient-to-br from-white/10 to-white/5 border border-white/15 mb-1.5 shadow-inner flex items-center justify-center">
+                  <AnimatedWeatherIcon
+                    iconName={displayedIconName}
+                    size="lg"
+                    windSpeed={weather.windSpeed}
+                    temp={weather.temp}
+                  />
                 </div>
-                <span className="text-sm font-medium text-stone-200">
-                  {weather.condition.label}
-                </span>
-                <span className="text-[11px] text-stone-400 max-w-[140px] truncate">
-                  {weather.condition.description}
+                <span className="text-sm font-medium text-stone-100">{displayedLabel}</span>
+                <span className="text-[11px] text-stone-400 max-w-[165px] truncate">
+                  {displayedDescription}
                 </span>
               </div>
             </div>
 
-            {/* Weather Metrics Grid */}
-            <div className="mt-5 grid grid-cols-4 gap-2 pt-4 border-t border-white/10 text-center">
+            {/* Interactive SVG Weather Reaction Switcher */}
+            <div className="mt-3 pt-2.5 border-t border-white/10">
+              <div className="flex items-center justify-between text-[11px] text-stone-400 mb-1.5">
+                <span>Стан анімованої SVG-іконки:</span>
+                {previewIconMode !== 'auto' && (
+                  <button
+                    type="button"
+                    onClick={() => setPreviewIconMode('auto')}
+                    className="text-amber-300 hover:underline cursor-pointer"
+                  >
+                    Повернути реальну погоду
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-1 overflow-x-auto pb-1 no-scrollbar">
+                {WEATHER_PREVIEW_MODES.map((mode) => {
+                  const active = previewIconMode === mode.id;
+                  return (
+                    <button
+                      key={mode.id}
+                      type="button"
+                      onClick={() => setPreviewIconMode(mode.id)}
+                      className={`px-2 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap transition-colors cursor-pointer shrink-0 ${
+                        active
+                          ? 'bg-amber-500/25 text-amber-200 border border-amber-400/40'
+                          : 'bg-white/5 text-stone-400 hover:text-stone-200 border border-white/5'
+                      }`}
+                    >
+                      {mode.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Weather Metrics Grid with Reactive Animated SVG Micro-Icons */}
+            <div className="mt-3.5 grid grid-cols-4 gap-2 pt-3.5 border-t border-white/10 text-center">
               <div className="p-2 rounded-xl bg-white/5 border border-white/5">
-                <div className="flex items-center justify-center text-sky-400 mb-1">
-                  <Droplets className="w-3.5 h-3.5" />
+                <div className="flex items-center justify-center mb-1">
+                  <AnimatedMetricIcon type="humidity" value={weather.humidity} />
                 </div>
                 <div className="text-[10px] text-stone-400">Вологість</div>
                 <div className="text-xs font-semibold text-stone-100 font-data-mono">
@@ -157,8 +187,8 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({
               </div>
 
               <div className="p-2 rounded-xl bg-white/5 border border-white/5">
-                <div className="flex items-center justify-center text-emerald-400 mb-1">
-                  <Wind className="w-3.5 h-3.5" />
+                <div className="flex items-center justify-center mb-1">
+                  <AnimatedMetricIcon type="wind" value={weather.windSpeed} />
                 </div>
                 <div className="text-[10px] text-stone-400">Вітер</div>
                 <div className="text-xs font-semibold text-stone-100 font-data-mono">
@@ -167,8 +197,8 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({
               </div>
 
               <div className="p-2 rounded-xl bg-white/5 border border-white/5">
-                <div className="flex items-center justify-center text-amber-400 mb-1">
-                  <Gauge className="w-3.5 h-3.5" />
+                <div className="flex items-center justify-center mb-1">
+                  <AnimatedMetricIcon type="pressure" value={weather.surfacePressure} />
                 </div>
                 <div className="text-[10px] text-stone-400">Тиск</div>
                 <div className="text-xs font-semibold text-stone-100 font-data-mono">
@@ -177,8 +207,8 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({
               </div>
 
               <div className="p-2 rounded-xl bg-white/5 border border-white/5">
-                <div className="flex items-center justify-center text-orange-400 mb-1">
-                  <Sun className="w-3.5 h-3.5" />
+                <div className="flex items-center justify-center mb-1">
+                  <AnimatedMetricIcon type="uv" value={weather.uvIndex} />
                 </div>
                 <div className="text-[10px] text-stone-400">УФ-індекс</div>
                 <div className="text-xs font-semibold text-stone-100 font-data-mono">
@@ -187,27 +217,38 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({
               </div>
             </div>
 
-            {/* Hourly Forecast */}
+            {/* Hourly Forecast with Animated SVG Weather Icons */}
             <div className="mt-4 pt-3 border-t border-white/10">
-              <div className="text-xs text-stone-400 mb-2 font-medium">Прогноз на день:</div>
-              <div className="flex items-center gap-3 overflow-x-auto pb-1 no-scrollbar">
-                {weather.hourly.map((h, idx) => (
-                  <div
-                    key={idx}
-                    className="flex flex-col items-center min-w-[48px] py-1.5 px-1 rounded-lg bg-white/5 border border-white/5 text-center shrink-0"
-                  >
-                    <span className="text-[10px] text-stone-400 font-data-mono">{h.time}</span>
-                    <div className="my-1">
-                      {renderWeatherIcon(
-                        h.weatherCode < 3 ? 'sun' : h.weatherCode < 60 ? 'cloud' : 'cloud-rain',
-                        'w-4 h-4'
-                      )}
+              <div className="text-xs text-stone-400 mb-2 font-medium">
+                Погодинний прогноз (анімовані стани):
+              </div>
+              <div className="flex items-center gap-2.5 overflow-x-auto pb-1 no-scrollbar">
+                {weather.hourly.map((h, idx) => {
+                  const hourNum = parseInt(h.time.slice(0, 2), 10);
+                  const isHourDay = hourNum >= 6 && hourNum <= 19;
+                  const mapped = mapWmoCode(h.weatherCode, isHourDay);
+
+                  return (
+                    <div
+                      key={idx}
+                      className="flex flex-col items-center min-w-[54px] py-2 px-1.5 rounded-xl bg-white/5 border border-white/5 hover:border-white/15 text-center shrink-0 transition-colors"
+                      title={`${h.time}: ${mapped.label}`}
+                    >
+                      <span className="text-[10px] text-stone-400 font-data-mono">{h.time}</span>
+                      <div className="my-1">
+                        <AnimatedWeatherIcon
+                          iconName={mapped.iconName}
+                          size="sm"
+                          windSpeed={weather.windSpeed}
+                          temp={h.temp}
+                        />
+                      </div>
+                      <span className="text-xs font-medium text-stone-200 font-data-mono">
+                        {h.temp > 0 ? `+${h.temp}` : h.temp}°
+                      </span>
                     </div>
-                    <span className="text-xs font-medium text-stone-200 font-data-mono">
-                      {h.temp > 0 ? `+${h.temp}` : h.temp}°
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
