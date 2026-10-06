@@ -210,13 +210,20 @@ export const MoonPhaseWidget: React.FC = () => {
               <ChevronLeft className="w-3.5 h-3.5" />
             </button>
             <button
-              onClick={() => setDayOffset(0)}
+              type="button"
+              onClick={() => {
+                if (dayOffset === 0) {
+                  window.location.reload();
+                } else {
+                  setDayOffset(0);
+                }
+              }}
               className={`px-2 py-0.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
                 dayOffset === 0
-                  ? 'bg-amber-500/20 text-amber-200 border border-amber-400/30'
+                  ? 'bg-amber-500/20 text-amber-200 border border-amber-400/30 hover:bg-amber-500/30'
                   : 'glass-pill text-stone-300 hover:text-white'
               }`}
-              title="Повернутися до сьогоднішньої дати"
+              title="Перезавантажити сторінку / сьогоднішня дата"
             >
               {dayOffset === 0 ? 'Сьогодні' : `${dayOffset > 0 ? `+${dayOffset}` : dayOffset} дн.`}
             </button>

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import {
   GripVertical,
   ChevronUp,
@@ -8,11 +8,13 @@ import {
   Maximize2,
   Minimize2,
   RotateCcw,
+  ArrowLeftRight,
 } from 'lucide-react';
 import { WidgetWeatherOverlay, ResolvedNatureEffect } from './WidgetWeatherOverlay';
 
 export interface DraggableWidgetProps {
   id: string;
+  gridIndex?: number;
   title: string;
   summary?: string;
   icon?: React.ReactNode;
@@ -67,6 +69,7 @@ const clamp = (val: number, min: number, max: number) => Math.max(min, Math.min(
 
 export const DraggableWidget: React.FC<DraggableWidgetProps> = ({
   id,
+  gridIndex = 0,
   title,
   summary,
   icon,
@@ -74,7 +77,6 @@ export const DraggableWidget: React.FC<DraggableWidgetProps> = ({
   onToggleCollapse,
   isWide = false,
   onToggleWide,
-  freePositionMode,
   savedOffset,
   onSaveOffset,
   onStartPointerDrag,
@@ -95,6 +97,14 @@ export const DraggableWidget: React.FC<DraggableWidgetProps> = ({
   const pointerStartRef = useRef({ clientX: 0, clientY: 0, baseX: 0, baseY: 0 });
   const lastPointerRef = useRef({ clientX: 0, clientY: 0, time: 0 });
   const hoveredTargetRef = useRef<string | null>(null);
+
+  // Track layout position in the CSS Grid so when a widget replaces another widget,
+  // all shifted widgets glide smoothly from their old slot to their new slot (FLIP physics)
+  const lastGridPosRef = useRef<{ left: number; top: number; initialized: boolean }>({
+    left: 0,
+    top: 0,
+    initialized: false,
+  });
 
   // Track previous positions before dragging so double-click / double-tap returns to previous position
   const previousOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -178,7 +188,7 @@ export const DraggableWidget: React.FC<DraggableWidgetProps> = ({
       p.targetSkewY = clamp(speedY * 0.18, -9, 9);
       p.targetRot = clamp(speedX * 0.25, -10, 10);
     } else {
-      // Elastic spring-back / settling when released or returning on double-click
+      // Elastic spring-back / settling when released, shifted in grid, or returning on double-click
       const posStiffness = 0.15;
       const posDamping = 0.77;
       const ax = (p.targetX - p.x) * posStiffness;
@@ -264,14 +274,75 @@ export const DraggableWidget: React.FC<DraggableWidgetProps> = ({
     [startPhysicsLoop]
   );
 
+  // FLIP Grid Shift Animation: when widgetOrder changes (because a widget was dropped onto another widget),
+  // smoothly animate both the replacing widget and all shifted widgets from their old slot to their new slot!
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const newLeft = el.offsetLeft;
+    const newTop = el.offsetTop;
+
+    if (lastGridPosRef.current.initialized) {
+      const dx = lastGridPosRef.current.left - newLeft;
+      const dy = lastGridPosRef.current.top - newTop;
+      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+        const p = physRef.current;
+        p.x += dx;
+        p.y += dy;
+        p.targetX = savedOffset.x;
+        p.targetY = savedOffset.y;
+        p.vScaleX += 0.08;
+        p.vScaleY -= 0.07;
+        p.vRot += clamp(dx * 0.015, -6, 6);
+        applyTransformToDOM();
+        startPhysicsLoop();
+      }
+    }
+
+    lastGridPosRef.current = { left: newLeft, top: newTop, initialized: true };
+  }, [gridIndex, isWide, savedOffset.x, savedOffset.y, applyTransformToDOM, startPhysicsLoop]);
+
+  // Keep baseline grid coordinates accurate on viewport resize
+  useEffect(() => {
+    const handleResize = () => {
+      const el = containerRef.current;
+      if (!el) return;
+      lastGridPosRef.current = {
+        left: el.offsetLeft,
+        top: el.offsetTop,
+        initialized: true,
+      };
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Live preview shift when another widget is being dragged over this widget
+  useEffect(() => {
+    if (isPointerDownRef.current) return;
+    const p = physRef.current;
+    if (isDragOver) {
+      // Nudge widget slightly to preview that it will shift over to make room
+      p.targetX = savedOffset.x + 16;
+      p.targetY = savedOffset.y + 12;
+      triggerJellyImpulse(0.06, -0.05, 1.8);
+    } else {
+      p.targetX = savedOffset.x;
+      p.targetY = savedOffset.y;
+      startPhysicsLoop();
+    }
+  }, [isDragOver, savedOffset.x, savedOffset.y, triggerJellyImpulse, startPhysicsLoop]);
+
   // Sync when savedOffset changes externally
   useEffect(() => {
     const p = physRef.current;
-    p.targetX = savedOffset.x;
-    p.targetY = savedOffset.y;
+    if (!isDragOver) {
+      p.targetX = savedOffset.x;
+      p.targetY = savedOffset.y;
+    }
     setIsPinnedOffset(savedOffset.x !== 0 || savedOffset.y !== 0);
     triggerJellyImpulse(0.04, -0.04, 0);
-  }, [savedOffset.x, savedOffset.y, triggerJellyImpulse]);
+  }, [savedOffset.x, savedOffset.y, isDragOver, triggerJellyImpulse]);
 
   useEffect(() => {
     return () => {
@@ -288,13 +359,11 @@ export const DraggableWidget: React.FC<DraggableWidgetProps> = ({
       Math.abs(p.targetX) > 1 || Math.abs(p.targetY) > 1 || isPinnedOffset;
 
     if (isCurrentlyDisplaced) {
-      // Check if we have a non-zero previous offset or should return to home (0, 0)
       const dest =
         previousOffsetRef.current.x !== p.targetX || previousOffsetRef.current.y !== p.targetY
           ? previousOffsetRef.current
           : { x: 0, y: 0 };
 
-      // Once returned to dest, next double-click returns all the way to (0, 0)
       previousOffsetRef.current = { x: 0, y: 0 };
 
       p.targetX = dest.x;
@@ -326,6 +395,55 @@ export const DraggableWidget: React.FC<DraggableWidgetProps> = ({
     onRestorePreviousOrder,
     triggerJellyImpulse,
   ]);
+
+  // Detect which other widget card is underneath the pointer or overlapped by the dragged card
+  const findTargetWidgetUnderDrag = (clientX: number, clientY: number): string | null => {
+    // 1. Direct pointer hit test
+    const elementsUnderPointer = document.elementsFromPoint(clientX, clientY);
+    for (const el of elementsUnderPointer) {
+      const widgetCard = el.closest('[data-widget-id]') as HTMLElement | null;
+      if (widgetCard) {
+        const candidateId = widgetCard.getAttribute('data-widget-id');
+        if (candidateId && candidateId !== id) {
+          return candidateId;
+        }
+      }
+    }
+
+    // 2. Bounding box overlap check (if dragged card overlaps >30% of another widget card)
+    const selfEl = containerRef.current;
+    if (!selfEl) return null;
+    const selfRect = selfEl.getBoundingClientRect();
+    const allWidgets = document.querySelectorAll<HTMLElement>('[data-widget-id]');
+    let bestId: string | null = null;
+    let bestOverlapRatio = 0.28;
+
+    allWidgets.forEach((otherEl) => {
+      const candidateId = otherEl.getAttribute('data-widget-id');
+      if (!candidateId || candidateId === id) return;
+      const r = otherEl.getBoundingClientRect();
+      const overlapW = Math.max(
+        0,
+        Math.min(selfRect.right, r.right) - Math.max(selfRect.left, r.left)
+      );
+      const overlapH = Math.max(
+        0,
+        Math.min(selfRect.bottom, r.bottom) - Math.max(selfRect.top, r.top)
+      );
+      const overlapArea = overlapW * overlapH;
+      const minCardArea = Math.max(
+        1,
+        Math.min(selfRect.width * selfRect.height, r.width * r.height)
+      );
+      const ratio = overlapArea / minCardArea;
+      if (ratio > bestOverlapRatio) {
+        bestOverlapRatio = ratio;
+        bestId = candidateId;
+      }
+    });
+
+    return bestId;
+  };
 
   const handlePointerDownHeader = (e: React.PointerEvent<HTMLDivElement>) => {
     // Ignore if user clicked a button inside the header
@@ -398,19 +516,7 @@ export const DraggableWidget: React.FC<DraggableWidgetProps> = ({
       time: performance.now(),
     };
 
-    // Detect if pointer is over another widget card for optional slot swapping
-    const elementsUnderPointer = document.elementsFromPoint(e.clientX, e.clientY);
-    let foundWidgetId: string | null = null;
-    for (const el of elementsUnderPointer) {
-      const widgetCard = el.closest('[data-widget-id]') as HTMLElement | null;
-      if (widgetCard) {
-        const candidateId = widgetCard.getAttribute('data-widget-id');
-        if (candidateId && candidateId !== id) {
-          foundWidgetId = candidateId;
-          break;
-        }
-      }
-    }
+    const foundWidgetId = findTargetWidgetUnderDrag(e.clientX, e.clientY);
 
     if (hoveredTargetRef.current !== foundWidgetId) {
       hoveredTargetRef.current = foundWidgetId;
@@ -431,7 +537,8 @@ export const DraggableWidget: React.FC<DraggableWidgetProps> = ({
     } catch {}
 
     const p = physRef.current;
-    const targetWidget = hoveredTargetRef.current;
+    const targetWidget =
+      hoveredTargetRef.current || findTargetWidgetUnderDrag(e.clientX, e.clientY);
 
     // If user merely clicked without dragging (< 5px movement), do not alter saved position
     if (!hasMovedRef.current) {
@@ -448,8 +555,8 @@ export const DraggableWidget: React.FC<DraggableWidgetProps> = ({
       y: Math.round(pointerStartRef.current.baseY),
     };
 
-    if (!freePositionMode && targetWidget) {
-      // Swapping places with target widget in Grid Mode: reset offset to (0, 0) and play jelly bounce
+    if (targetWidget && targetWidget !== id) {
+      // Dropped onto another widget: replace that widget's slot and shift the target widget over!
       p.targetX = 0;
       p.targetY = 0;
       p.vScaleX += 0.095;
@@ -460,7 +567,7 @@ export const DraggableWidget: React.FC<DraggableWidgetProps> = ({
       setIsPinnedOffset(false);
       onEndPointerDrag(id, targetWidget);
     } else {
-      // Keep the window at the dragged coordinates so the user can double-click to return it!
+      // Dropped in free space: keep at dragged coordinates so double-click returns it
       const finalX = Math.round(p.targetX);
       const finalY = Math.round(p.targetY);
       p.targetX = finalX;
@@ -481,7 +588,7 @@ export const DraggableWidget: React.FC<DraggableWidgetProps> = ({
   const isInteractiveElement = (target: EventTarget | null): boolean => {
     if (!(target instanceof HTMLElement)) return false;
     return Boolean(
-      target.closest('button, input, select, textarea, a, label, audio, [role="slider"]')
+      target.closest('button, input, select, textarea, a, label, audio, svg, [role="slider"]')
     );
   };
 
@@ -492,7 +599,6 @@ export const DraggableWidget: React.FC<DraggableWidgetProps> = ({
 
   const handleWindowBodyPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (isInteractiveElement(e.target)) return;
-    // Ignore if inside header (header already handles its own double-tap)
     if ((e.target as HTMLElement).closest('[data-widget-header]')) return;
 
     const now = performance.now();
@@ -530,14 +636,14 @@ export const DraggableWidget: React.FC<DraggableWidgetProps> = ({
           : 'z-10'
       } ${
         isDragOver
-          ? 'ring-2 ring-amber-400 bg-amber-500/10 shadow-[0_0_32px_rgba(251,191,36,0.35)] transition-shadow duration-150'
+          ? 'ring-2 ring-emerald-400 bg-emerald-500/10 shadow-[0_0_36px_rgba(52,211,153,0.4)] transition-shadow duration-150'
           : ''
       }`}
     >
-      {/* Weather & Nature Reactive Overlay (Soaked rain & dripping drops from top, snowdrifts, leaves, etc.) */}
+      {/* Weather & Nature Reactive Overlay */}
       <WidgetWeatherOverlay effect={weatherEffect} isCollapsed={isCollapsed} />
 
-      {/* Top Drag & Collapse Control Bar (Pointer, Touch & Double-Click enabled) */}
+      {/* Top Drag & Collapse Control Bar */}
       <div
         data-widget-header="true"
         onPointerDown={handlePointerDownHeader}
@@ -550,7 +656,7 @@ export const DraggableWidget: React.FC<DraggableWidgetProps> = ({
             ? 'glass-panel rounded-2xl border border-white/15 hover:border-amber-400/50'
             : 'bg-stone-950/70 backdrop-blur-md border-x border-t border-white/15 rounded-t-2xl hover:bg-stone-900/75'
         } cursor-grab active:cursor-grabbing`}
-        title="Потягніть, щоб перемістити з ефектом желе · Натисніть двічі (2× клік) на вікно, щоб повернути на попереднє положення"
+        title="Перетягніть на інший віджет, щоб замінити його і зсунути сусідній · 2× клік — повернути назад"
       >
         <div className="flex items-center gap-2 min-w-0 pointer-events-none">
           <GripVertical className="w-4 h-4 text-amber-300/80 group-hover/widget:text-amber-300 transition-colors shrink-0" />
@@ -567,15 +673,23 @@ export const DraggableWidget: React.FC<DraggableWidgetProps> = ({
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
-          {/* Brief confirmation pill when returned via double-click */}
-          {justReturnedFlash && (
+          {/* Live indicator when another widget is hovered over this one to replace & shift it */}
+          {isDragOver && (
+            <span className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-500/25 text-emerald-200 border border-emerald-400/50 animate-pulse">
+              <ArrowLeftRight className="w-3 h-3" />
+              <span>Замінити · Сунеться</span>
+            </span>
+          )}
+
+          {/* Brief confirmation when returned via double-click */}
+          {justReturnedFlash && !isDragOver && (
             <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-emerald-500/25 text-emerald-200 border border-emerald-400/40 animate-pulse">
               ↺ Повернуто на місце
             </span>
           )}
 
           {/* Double-click / Reset Previous Position Indicator */}
-          {canReturnToPrevious && !justReturnedFlash && (
+          {canReturnToPrevious && !justReturnedFlash && !isDragOver && (
             <button
               type="button"
               onClick={handleReturnToPreviousPosition}

@@ -17,7 +17,10 @@ import {
   Disc,
   Radio,
   Settings,
+  Activity,
 } from 'lucide-react';
+
+export type EqualizerVisualMode = 'waves_bars' | 'pure_waves' | 'spectrum';
 
 export interface CuratedSpotifyItem {
   id: string;
@@ -27,9 +30,10 @@ export interface CuratedSpotifyItem {
   title: string;
   subtitle: string;
   coverSrc: string;
+  bpm: number;
 }
 
-// Official Spotify Playlists & Tracks with verified Spotify CDN Cover Art
+// Official Spotify Playlists & Tracks with verified Spotify CDN Cover Art & Tempo BPM
 const CURATED_SPOTIFY_ITEMS: CuratedSpotifyItem[] = [
   {
     id: 'lofi-beats',
@@ -39,6 +43,7 @@ const CURATED_SPOTIFY_ITEMS: CuratedSpotifyItem[] = [
     title: 'lofi beats · Спокій та фокус',
     subtitle: 'Spotify Official Playlist',
     coverSrc: 'https://i.scdn.co/image/ab67706f00000002266beb50b0032b0f140a749e',
+    bpm: 84,
   },
   {
     id: 'peaceful-piano',
@@ -48,6 +53,7 @@ const CURATED_SPOTIFY_ITEMS: CuratedSpotifyItem[] = [
     title: 'Peaceful Piano · Тихе фортепіано',
     subtitle: 'Spotify Official Playlist',
     coverSrc: 'https://i.scdn.co/image/ab67706f0000000270e1fb7db7b45809d6a80377',
+    bpm: 68,
   },
   {
     id: 'deep-focus',
@@ -57,6 +63,7 @@ const CURATED_SPOTIFY_ITEMS: CuratedSpotifyItem[] = [
     title: 'Deep Focus · Глибока концентрація',
     subtitle: 'Spotify Official Playlist',
     coverSrc: 'https://i.scdn.co/image/ab67706f000000026020f2f6476db518ef747da4',
+    bpm: 92,
   },
   {
     id: 'nature-sounds',
@@ -66,6 +73,7 @@ const CURATED_SPOTIFY_ITEMS: CuratedSpotifyItem[] = [
     title: 'Nature Sounds · Звуки дикої природи',
     subtitle: 'Spotify Official Playlist',
     coverSrc: 'https://i.scdn.co/image/ab67706f00000002e909a20522cfdb017c798ba8',
+    bpm: 74,
   },
   {
     id: 'blinding-lights',
@@ -76,6 +84,7 @@ const CURATED_SPOTIFY_ITEMS: CuratedSpotifyItem[] = [
     subtitle: 'The Weeknd · After Hours',
     coverSrc:
       'https://image-cdn-fa.spotifycdn.com/image/ab67616d00001e028863bc11d2aa12b54f5aeb36',
+    bpm: 171,
   },
   {
     id: 'chill-tracks',
@@ -85,6 +94,7 @@ const CURATED_SPOTIFY_ITEMS: CuratedSpotifyItem[] = [
     title: 'Chill Tracks · Вечірній чіл',
     subtitle: 'Spotify Official Playlist',
     coverSrc: 'https://i.scdn.co/image/ab67706f00000002266beb50b0032b0f140a749e',
+    bpm: 102,
   },
 ];
 
@@ -223,13 +233,16 @@ export const MusicPlayerWidget: React.FC<MusicPlayerWidgetProps> = ({ onPlayback
   const embedHostRef = useRef<HTMLDivElement | null>(null);
   const embedControllerRef = useRef<any>(null);
   const directAudioRef = useRef<HTMLAudioElement | null>(null);
+  const eqCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const volumeDebounceRef = useRef<number | null>(null);
   const onPlaybackChangeRef = useRef(onPlaybackChange);
   onPlaybackChangeRef.current = onPlaybackChange;
 
-  const effectiveVolume = isMuted ? 0 : volumePercent;
+  const [eqMode, setEqMode] = useState<EqualizerVisualMode>('waves_bars');
 
+  const effectiveVolume = isMuted ? 0 : volumePercent;
   const currentCurated = CURATED_SPOTIFY_ITEMS[activeIndex] || CURATED_SPOTIFY_ITEMS[0];
+  const activeBpm = currentCurated.bpm || 96;
   const activeEmbed = customEmbed || {
     type: currentCurated.spotifyType,
     id: currentCurated.spotifyId,
@@ -446,6 +459,195 @@ export const MusicPlayerWidget: React.FC<MusicPlayerWidgetProps> = ({ onPlayback
       onPlaybackChangeRef.current(isPlaying, summaryTitle);
     }
   }, [isPlaying, summaryTitle]);
+
+  // 60fps Beat-Synchronized Wave & Spectrum Equalizer Canvas Engine
+  useEffect(() => {
+    const canvas = eqCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let rafId: number;
+    const numBars = 36;
+    const barHeights = new Float32Array(numBars);
+    const barPeaks = new Float32Array(numBars);
+
+    const renderEqualizer = (nowMs: number) => {
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        const targetW = Math.round(rect.width * dpr);
+        const targetH = Math.round(rect.height * dpr);
+        if (canvas.width !== targetW || canvas.height !== targetH) {
+          canvas.width = targetW;
+          canvas.height = targetH;
+        }
+      }
+
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+
+      const t = nowMs / 1000;
+      const volScale = isPlaying ? Math.max(0.18, effectiveVolume / 100) : 0.08;
+      const beatsPerSec = activeBpm / 60;
+      const beatPhase = t * beatsPerSec * Math.PI * 2;
+
+      // Sharp rhythmic kick pulse + off-beat snare pulse synced to track BPM
+      const kickPulse = isPlaying ? Math.pow(Math.max(0, Math.sin(beatPhase)), 6) : 0;
+      const snarePulse = isPlaying
+        ? Math.pow(Math.max(0, Math.sin(beatPhase - Math.PI)), 8) * 0.65
+        : 0;
+      const beatEnergy = (0.45 + kickPulse * 0.75 + snarePulse * 0.45) * volScale;
+
+      // Subtle background bass glow on beat impact
+      if (isPlaying && kickPulse > 0.25) {
+        const bgGrad = ctx.createRadialGradient(w * 0.5, h * 0.6, 2, w * 0.5, h * 0.6, w * 0.55);
+        bgGrad.addColorStop(0, `rgba(30, 215, 96, ${(kickPulse * 0.22 * volScale).toFixed(3)})`);
+        bgGrad.addColorStop(1, 'rgba(30, 215, 96, 0)');
+        ctx.fillStyle = bgGrad;
+        ctx.fillRect(0, 0, w, h);
+      }
+
+      // 1. Draw Flowing Beat-Reactive Soundwaves (for 'waves_bars' and 'pure_waves' modes)
+      if (eqMode === 'waves_bars' || eqMode === 'pure_waves') {
+        const waveLayers = [
+          {
+            color: 'rgba(30, 215, 96, 0.85)',
+            fill: 'rgba(30, 215, 96, 0.16)',
+            freq: 2.4,
+            speed: 4.2,
+            amp: 0.36,
+            phaseOffset: 0,
+          },
+          {
+            color: 'rgba(52, 211, 153, 0.65)',
+            fill: 'rgba(52, 211, 153, 0.10)',
+            freq: 3.7,
+            speed: -3.4,
+            amp: 0.28,
+            phaseOffset: 1.7,
+          },
+          {
+            color: 'rgba(56, 189, 248, 0.55)',
+            fill: 'rgba(56, 189, 248, 0.08)',
+            freq: 5.1,
+            speed: 5.6,
+            amp: 0.22,
+            phaseOffset: 3.1,
+          },
+        ];
+
+        const midY = eqMode === 'pure_waves' ? h * 0.52 : h * 0.58;
+
+        for (const layer of waveLayers) {
+          ctx.beginPath();
+          const step = Math.max(2, Math.floor(w / 90));
+          for (let x = 0; x <= w; x += step) {
+            const nx = x / w;
+            // Window envelope so wave tapers smoothly at left & right edges
+            const envelope = Math.sin(nx * Math.PI);
+            const harmonic1 = Math.sin(nx * Math.PI * 2 * layer.freq + t * layer.speed + layer.phaseOffset);
+            const harmonic2 =
+              Math.cos(nx * Math.PI * 4 * layer.freq - t * layer.speed * 0.7) * 0.45;
+            const beatMod = 1 + kickPulse * 0.85 * Math.sin(nx * Math.PI);
+
+            const dy =
+              (harmonic1 + harmonic2) *
+              envelope *
+              h *
+              layer.amp *
+              beatEnergy *
+              beatMod;
+            const y = midY + dy;
+            if (x === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          }
+
+          ctx.strokeStyle = layer.color;
+          ctx.lineWidth = 2 * dpr;
+          ctx.stroke();
+
+          // Soft fill to baseline
+          ctx.lineTo(w, h);
+          ctx.lineTo(0, h);
+          ctx.closePath();
+          ctx.fillStyle = layer.fill;
+          ctx.fill();
+        }
+      }
+
+      // 2. Draw Beat-Reactive Frequency Spectrum Bars (for 'waves_bars' and 'spectrum' modes)
+      if (eqMode === 'waves_bars' || eqMode === 'spectrum') {
+        const paddingX = 8 * dpr;
+        const usableW = w - paddingX * 2;
+        const slotW = usableW / numBars;
+        const barW = Math.max(2 * dpr, slotW * 0.62);
+
+        for (let i = 0; i < numBars; i++) {
+          const normIdx = i / (numBars - 1);
+          // Bass on left/center, mids in middle, treble on right
+          const centerBell = Math.sin(normIdx * Math.PI);
+          const bassWeight = Math.max(0, 1 - normIdx * 1.6);
+          const trebleWeight = Math.max(0, (normIdx - 0.5) * 1.8);
+
+          let targetRatio = 0.06;
+          if (isPlaying) {
+            const oscA = Math.abs(Math.sin(t * 6.5 + i * 0.48));
+            const oscB = Math.abs(Math.cos(t * 4.2 - i * 0.31));
+            const raw =
+              (oscA * 0.55 +
+                oscB * 0.35 +
+                kickPulse * (0.65 * bassWeight + 0.45 * centerBell) +
+                snarePulse * (0.5 * centerBell + 0.5 * trebleWeight)) *
+              volScale;
+            targetRatio = Math.min(0.94, Math.max(0.08, raw));
+          } else {
+            targetRatio = 0.05 + Math.sin(t * 1.8 + i * 0.35) * 0.025;
+          }
+
+          // Smooth physics attack & decay for each equalizer bar
+          const current = barHeights[i];
+          barHeights[i] =
+            targetRatio > current
+              ? current + (targetRatio - current) * 0.42
+              : current + (targetRatio - current) * 0.16;
+
+          if (barHeights[i] > barPeaks[i]) {
+            barPeaks[i] = barHeights[i];
+          } else {
+            barPeaks[i] = Math.max(0.05, barPeaks[i] - 0.008);
+          }
+
+          const bh = Math.max(3 * dpr, barHeights[i] * (h * 0.82));
+          const bx = paddingX + i * slotW + (slotW - barW) * 0.5;
+          const by = h - bh - 2 * dpr;
+
+          const barGrad = ctx.createLinearGradient(0, by, 0, h);
+          barGrad.addColorStop(0, '#34d399');
+          barGrad.addColorStop(0.5, '#1ED760');
+          barGrad.addColorStop(1, 'rgba(16, 185, 129, 0.25)');
+
+          ctx.fillStyle = barGrad;
+          ctx.beginPath();
+          ctx.roundRect(bx, by, barW, bh, 2 * dpr);
+          ctx.fill();
+
+          // Peak-hold cap dot
+          if (isPlaying) {
+            const peakY = h - barPeaks[i] * (h * 0.82) - 5 * dpr;
+            ctx.fillStyle = 'rgba(167, 243, 208, 0.9)';
+            ctx.fillRect(bx, Math.max(2 * dpr, peakY), barW, 1.8 * dpr);
+          }
+        }
+      }
+
+      rafId = requestAnimationFrame(renderEqualizer);
+    };
+
+    rafId = requestAnimationFrame(renderEqualizer);
+    return () => cancelAnimationFrame(rafId);
+  }, [isPlaying, effectiveVolume, activeBpm, eqMode]);
 
   // Instant Direct Spotify Connection (uses SPOTIFY_CLIENT_ID & SPOTIFY_CLIENT_SECRET on backend — never fails with redirect_uri error!)
   const handleInstantConnectSpotify = async () => {
@@ -893,11 +1095,26 @@ export const MusicPlayerWidget: React.FC<MusicPlayerWidgetProps> = ({ onPlayback
                 referrerPolicy="no-referrer"
                 className="w-full h-full object-cover"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-transparent to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent" />
               <div className="absolute bottom-1.5 left-2 right-2 flex items-center justify-between">
                 <span className="px-1.5 py-0.5 rounded bg-black/60 text-[9px] font-semibold text-[#1ED760] uppercase tracking-wider">
                   Spotify
                 </span>
+                {/* Mini Equalizer Bars on Cover */}
+                <div className="flex items-end gap-0.5 h-3">
+                  {[0.5, 1.0, 0.7, 0.9].map((mult, i) => (
+                    <span
+                      key={i}
+                      className="w-0.5 rounded-full bg-[#1ED760] transition-all duration-200"
+                      style={{
+                        height: isPlaying ? `${Math.round(mult * 11)}px` : '3px',
+                        animation: isPlaying
+                          ? `svgSunPulse ${0.42 + i * 0.11}s ease-in-out infinite`
+                          : 'none',
+                      }}
+                    />
+                  ))}
+                </div>
               </div>
             </div>
           </div>
@@ -1034,6 +1251,52 @@ export const MusicPlayerWidget: React.FC<MusicPlayerWidgetProps> = ({ onPlayback
                 </a>
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Live Beat-Reactive Wave & Spectrum Equalizer */}
+        <div className="mt-3 p-3 rounded-2xl bg-stone-950/75 border border-white/10 shadow-inner">
+          <div className="flex items-center justify-between gap-2 mb-1.5">
+            <div className="flex items-center gap-1.5 text-[11px] text-stone-300">
+              <Activity
+                className={`w-3.5 h-3.5 text-[#1ED760] ${isPlaying ? 'animate-pulse' : ''}`}
+              />
+              <span className="font-medium text-white">Еквалайзер · Хвилі під такт</span>
+              <span className="text-[10px] font-data-mono text-[#1ED760]/90 bg-[#1ED760]/10 px-1.5 py-0.5 rounded border border-[#1ED760]/25">
+                {activeBpm} BPM {isPlaying ? '· LIVE' : '· Очікування'}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1">
+              {(
+                [
+                  { id: 'waves_bars', label: 'Хвилі + Спектр' },
+                  { id: 'pure_waves', label: 'Біт-хвилі' },
+                  { id: 'spectrum', label: 'Спектр' },
+                ] as const
+              ).map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setEqMode(m.id)}
+                  className={`px-2 py-0.5 rounded-md text-[10px] font-medium transition-colors cursor-pointer ${
+                    eqMode === m.id
+                      ? 'bg-[#1ED760]/25 text-[#1ED760] border border-[#1ED760]/40'
+                      : 'text-stone-400 hover:text-white'
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div
+            onClick={handleTogglePlayPause}
+            title="Натисніть, щоб запустити або призупинити хвилі під такт музики"
+            className="relative w-full h-16 rounded-xl overflow-hidden bg-black/50 border border-white/5 cursor-pointer"
+          >
+            <canvas ref={eqCanvasRef} className="w-full h-full block" />
           </div>
         </div>
 

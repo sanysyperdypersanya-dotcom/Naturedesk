@@ -1,5 +1,5 @@
 import React from 'react';
-import { Volume2, VolumeX, Maximize2, Minimize2, Image, Sparkles } from 'lucide-react';
+import { Volume2, VolumeX, Maximize2, Minimize2, Image, Sparkles, RotateCw } from 'lucide-react';
 
 interface HeaderBarProps {
   activeTab: 'all' | 'weather' | 'facts' | 'sounds';
@@ -28,19 +28,18 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
 }) => {
   return (
     <header className="w-full flex items-center justify-between px-6 py-4 border-b border-white/10 glass-panel-subtle z-30 transition-all duration-300">
-      {/* Zone 1: Single text element wordmark */}
+      {/* Zone 1: СЬОГОДНІ button reloads the page */}
       <div className="flex items-center gap-3">
-        <a
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            setActiveTab('all');
-          }}
-          className="group flex items-center gap-2 text-xl md:text-2xl font-semibold tracking-wider text-white font-serif-display select-none"
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="group flex items-center gap-2 text-xl md:text-2xl font-semibold tracking-wider text-white font-serif-display select-none cursor-pointer"
+          title="Перезавантажити сторінку"
         >
           <span>СЬОГОДНІ</span>
           <span className="w-1.5 h-1.5 rounded-full bg-amber-400 group-hover:scale-125 transition-transform" />
-        </a>
+          <RotateCw className="w-3.5 h-3.5 text-stone-400 opacity-0 group-hover:opacity-100 group-hover:rotate-180 transition-all duration-500" />
+        </button>
       </div>
 
       {/* Zone 2: 4 clean text navigation links */}

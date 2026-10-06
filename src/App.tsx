@@ -14,6 +14,7 @@ import { FactCard } from './components/FactCard';
 import { WallpaperSwitcher } from './components/WallpaperSwitcher';
 import { AmbientSoundPanel } from './components/AmbientSoundPanel';
 import { MusicPlayerWidget } from './components/MusicPlayerWidget';
+import { CompassWidget } from './components/CompassWidget';
 import { ZenModeView } from './components/ZenModeView';
 import { DraggableWidget } from './components/DraggableWidget';
 import {
@@ -43,6 +44,7 @@ import {
 export type WidgetId =
   | 'weather'
   | 'music'
+  | 'compass'
   | 'precipitation'
   | 'moon'
   | 'starmap'
@@ -54,6 +56,7 @@ export type WidgetId =
 const DEFAULT_WIDGET_ORDER: WidgetId[] = [
   'weather',
   'music',
+  'compass',
   'precipitation',
   'moon',
   'starmap',
@@ -66,6 +69,7 @@ const DEFAULT_WIDGET_ORDER: WidgetId[] = [
 const DEFAULT_WIDE_WIDGETS: Record<WidgetId, boolean> = {
   weather: false,
   music: false,
+  compass: false,
   precipitation: false,
   moon: false,
   starmap: false,
@@ -143,11 +147,18 @@ export default function App() {
       const saved = localStorage.getItem('naturedesk_widget_order_v1');
       if (saved) {
         const parsed = JSON.parse(saved) as WidgetId[];
-        if (
-          Array.isArray(parsed) &&
-          DEFAULT_WIDGET_ORDER.every((id) => parsed.includes(id))
-        ) {
-          return parsed;
+        if (Array.isArray(parsed)) {
+          const valid = parsed.filter((id) => DEFAULT_WIDGET_ORDER.includes(id));
+          const missing = DEFAULT_WIDGET_ORDER.filter((id) => !valid.includes(id));
+          if (missing.length === 0 && valid.length === DEFAULT_WIDGET_ORDER.length) {
+            return valid;
+          }
+          const merged = [...valid];
+          missing.forEach((mId) => {
+            const defaultIdx = DEFAULT_WIDGET_ORDER.indexOf(mId);
+            merged.splice(Math.min(defaultIdx, merged.length), 0, mId);
+          });
+          return merged;
         }
       }
     } catch {}
@@ -257,6 +268,11 @@ export default function App() {
         next.splice(toIdx, 0, sourceId as WidgetId);
         return next;
       });
+      setWidgetOffsets((prev) => ({
+        ...prev,
+        [sourceId]: { x: 0, y: 0 },
+        [targetId]: { x: 0, y: 0 },
+      }));
     }
     setDraggedWidgetId(null);
     setDragOverWidgetId(null);
@@ -404,6 +420,7 @@ export default function App() {
 
   const sharedDragProps = (id: WidgetId) => ({
     id,
+    gridIndex: widgetOrder.indexOf(id),
     isCollapsed: !!collapsedWidgets[id],
     onToggleCollapse: handleToggleCollapse,
     isWide: !!wideWidgets[id],
@@ -465,6 +482,23 @@ export default function App() {
             <MusicPlayerWidget
               onPlaybackChange={handleMusicPlaybackChange}
             />
+          </DraggableWidget>
+        );
+
+      case 'compass':
+        return (
+          <DraggableWidget
+            key="compass"
+            {...sharedDragProps('compass')}
+            title="Навігаційний Компас та Азимут"
+            summary={
+              weather
+                ? `${weather.city} · Вітер ${weather.windDirection}°`
+                : `${currentCity.name} · 360°`
+            }
+            icon={<Compass className="w-3.5 h-3.5 text-amber-300" />}
+          >
+            <CompassWidget weather={weather} city={currentCity} />
           </DraggableWidget>
         );
 
@@ -638,7 +672,14 @@ export default function App() {
   const visibleWidgetsForTab = (): WidgetId[] => {
     if (activeTab === 'all') return widgetOrder;
     if (activeTab === 'weather') {
-      const weatherSet: WidgetId[] = ['weather', 'precipitation', 'moon', 'starmap', 'eclipses'];
+      const weatherSet: WidgetId[] = [
+        'weather',
+        'compass',
+        'precipitation',
+        'moon',
+        'starmap',
+        'eclipses',
+      ];
       return widgetOrder.filter((id) => weatherSet.includes(id));
     }
     if (activeTab === 'facts') return ['facts'];
@@ -849,7 +890,14 @@ export default function App() {
           <footer className="w-full mt-8 py-5 border-t border-white/10 glass-panel-subtle text-xs text-stone-400">
             <div className="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
-                <span className="font-serif-display font-medium text-stone-200">СЬОГОДНІ</span>
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="font-serif-display font-medium text-stone-200 hover:text-amber-300 transition-colors cursor-pointer"
+                  title="Перезавантажити сторінку"
+                >
+                  СЬОГОДНІ
+                </button>
                 <span aria-hidden="true">·</span>
                 <span className="text-amber-300/90 font-medium">{currentWallpaper.title}</span>
                 <span aria-hidden="true">·</span>
