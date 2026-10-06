@@ -87,7 +87,7 @@ export default function App() {
   const [isMasterSoundActive, setIsMasterSoundActive] = useState(false);
   const [musicStatus, setMusicStatus] = useState<{ isPlaying: boolean; title: string }>({
     isPlaying: false,
-    title: 'Світанок у Карпатах (Lo-Fi Ambient)',
+    title: 'lofi beats · Спокій та фокус',
   });
 
   // Interactive Nature Effect State (default to rain so soaked widgets & falling droplets from widget tops are immediately visible, or switchable anytime)
@@ -454,13 +454,13 @@ export default function App() {
           <DraggableWidget
             key="music"
             {...sharedDragProps('music')}
-            title="Музичний плеєр"
+            title="Spotify · Музичний плеєр"
             summary={
               musicStatus.isPlaying
                 ? `Грає: ${musicStatus.title}`
                 : musicStatus.title
             }
-            icon={<Music className="w-3.5 h-3.5 text-amber-300" />}
+            icon={<Music className="w-3.5 h-3.5 text-[#1ED760]" />}
           >
             <MusicPlayerWidget
               onPlaybackChange={handleMusicPlaybackChange}
