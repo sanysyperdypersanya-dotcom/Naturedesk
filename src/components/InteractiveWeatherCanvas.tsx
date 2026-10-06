@@ -21,7 +21,10 @@ interface InteractiveWeatherCanvasProps {
   effectType: NatureEffectType;
   recommendedWallpaperEffect?: string;
   intensity?: number; // 0.5 to 2.0
-  onAutoEffectResolved?: (resolvedEffect: string) => void;
+  onAutoEffectResolved?: (
+    resolvedLabel: string,
+    resolvedType: Exclude<NatureEffectType, 'auto' | 'wallpaper_match'>
+  ) => void;
 }
 
 export const InteractiveWeatherCanvas: React.FC<InteractiveWeatherCanvasProps> = ({
@@ -76,7 +79,7 @@ export const InteractiveWeatherCanvas: React.FC<InteractiveWeatherCanvasProps> =
         fireflies: 'Нічні світлячки',
         none: 'Без ефектів',
       };
-      onAutoEffectResolved(names[activeEffect]);
+      onAutoEffectResolved(names[activeEffect], activeEffect);
     }
   }, [activeEffect, onAutoEffectResolved]);
 

@@ -16,6 +16,7 @@ import { AmbientSoundPanel } from './components/AmbientSoundPanel';
 import { MusicPlayerWidget } from './components/MusicPlayerWidget';
 import { ZenModeView } from './components/ZenModeView';
 import { DraggableWidget } from './components/DraggableWidget';
+import { ResolvedNatureEffect } from './components/WidgetWeatherOverlay';
 import {
   InteractiveWeatherCanvas,
   NatureEffectType,
@@ -89,10 +90,11 @@ export default function App() {
     title: 'Світанок у Карпатах (Lo-Fi Ambient)',
   });
 
-  // Interactive Nature Effect State (default to wallpaper_match so each Brave background has its signature animation)
-  const [natureEffect, setNatureEffect] = useState<NatureEffectType>('wallpaper_match');
+  // Interactive Nature Effect State (default to rain so soaked widgets & falling droplets from widget tops are immediately visible, or switchable anytime)
+  const [natureEffect, setNatureEffect] = useState<NatureEffectType>('rain');
   const [effectIntensity, setEffectIntensity] = useState<number>(1.0);
-  const [resolvedEffectLabel, setResolvedEffectLabel] = useState<string>('Північне сяйво');
+  const [resolvedEffectLabel, setResolvedEffectLabel] = useState<string>('Живий дощ');
+  const [resolvedEffectType, setResolvedEffectType] = useState<ResolvedNatureEffect>('rain');
   const [isEffectsDrawerOpen, setIsEffectsDrawerOpen] = useState(false);
 
   // Weather State
@@ -156,12 +158,7 @@ export default function App() {
     return DEFAULT_WIDE_WIDGETS;
   });
 
-  const [freePositionMode, setFreePositionMode] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('naturedesk_free_mode_v1') === 'true';
-    } catch {}
-    return false;
-  });
+  const [freePositionMode] = useState<boolean>(true);
 
   const [widgetOffsets, setWidgetOffsets] = useState<Record<string, { x: number; y: number }>>(
     () => {
@@ -175,6 +172,7 @@ export default function App() {
 
   const [draggedWidgetId, setDraggedWidgetId] = useState<WidgetId | null>(null);
   const [dragOverWidgetId, setDragOverWidgetId] = useState<WidgetId | null>(null);
+  const [orderHistory, setOrderHistory] = useState<WidgetId[][]>([]);
 
   useEffect(() => {
     try {
@@ -242,6 +240,7 @@ export default function App() {
         const fromIdx = next.indexOf(sourceId as WidgetId);
         const toIdx = next.indexOf(targetId as WidgetId);
         if (fromIdx === -1 || toIdx === -1) return prev;
+        setOrderHistory((hist) => [...hist.slice(-9), prev]);
         next.splice(fromIdx, 1);
         next.splice(toIdx, 0, sourceId as WidgetId);
         return next;
@@ -257,6 +256,7 @@ export default function App() {
       if (idx === -1) return prev;
       const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
       if (targetIdx < 0 || targetIdx >= prev.length) return prev;
+      setOrderHistory((hist) => [...hist.slice(-9), prev]);
       const next = [...prev];
       const temp = next[idx];
       next[idx] = next[targetIdx];
@@ -264,6 +264,18 @@ export default function App() {
       return next;
     });
   };
+
+  const handleRestorePreviousOrder = useCallback(() => {
+    setOrderHistory((hist) => {
+      if (hist.length === 0) {
+        setWidgetOrder(DEFAULT_WIDGET_ORDER);
+        return [];
+      }
+      const previous = hist[hist.length - 1];
+      setWidgetOrder(previous);
+      return hist.slice(0, -1);
+    });
+  }, []);
 
   const allCollapsed = DEFAULT_WIDGET_ORDER.every((id) => collapsedWidgets[id]);
 
@@ -391,6 +403,11 @@ export default function App() {
     onHoverTargetWidget: handleHoverTargetWidget,
     onEndPointerDrag: handleEndPointerDrag,
     onMoveOffset: handleMoveOffset,
+    onRestorePreviousOrder: handleRestorePreviousOrder,
+    hasOrderChanged:
+      orderHistory.length > 0 ||
+      widgetOrder.indexOf(id) !== DEFAULT_WIDGET_ORDER.indexOf(id),
+    weatherEffect: resolvedEffectType,
     isDragging: draggedWidgetId === id,
     isDragOver: dragOverWidgetId === id,
   });
@@ -672,7 +689,10 @@ export default function App() {
         effectType={natureEffect}
         recommendedWallpaperEffect={currentWallpaper.recommendedEffect}
         intensity={effectIntensity}
-        onAutoEffectResolved={(label) => setResolvedEffectLabel(label)}
+        onAutoEffectResolved={(label, resolvedType) => {
+          setResolvedEffectLabel(label);
+          setResolvedEffectType(resolvedType);
+        }}
       />
 
       {/* Zen Mode View */}
@@ -721,10 +741,54 @@ export default function App() {
 
                 <div className="flex flex-wrap items-center justify-center gap-1.5">
                   <button
+                    onClick={() => setNatureEffect('rain')}
+                    className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                      resolvedEffectType === 'rain'
+                        ? 'bg-sky-500/30 text-sky-200 border border-sky-400/50 font-semibold'
+                        : 'glass-pill hover:bg-white/15 text-stone-200'
+                    }`}
+                    title="Дощ: віджети намокають і з них зверху капають краплі"
+                  >
+                    🌧️ Дощ
+                  </button>
+                  <button
+                    onClick={() => setNatureEffect('snow')}
+                    className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                      resolvedEffectType === 'snow'
+                        ? 'bg-sky-200/25 text-white border border-sky-200/50 font-semibold'
+                        : 'glass-pill hover:bg-white/15 text-stone-200'
+                    }`}
+                    title="Снігопад: снігові шапки та бурульки на віджетах"
+                  >
+                    ❄️ Сніг
+                  </button>
+                  <button
+                    onClick={() => setNatureEffect('leaves')}
+                    className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                      resolvedEffectType === 'leaves'
+                        ? 'bg-amber-500/30 text-amber-200 border border-amber-400/50 font-semibold'
+                        : 'glass-pill hover:bg-white/15 text-stone-200'
+                    }`}
+                    title="Листопад: осіннє листя на вікнах"
+                  >
+                    🍂 Листя
+                  </button>
+                  <button
+                    onClick={() => setNatureEffect('thunderstorm')}
+                    className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                      resolvedEffectType === 'thunderstorm'
+                        ? 'bg-indigo-500/30 text-indigo-200 border border-indigo-400/50 font-semibold'
+                        : 'glass-pill hover:bg-white/15 text-stone-200'
+                    }`}
+                    title="Гроза: злива з краплями та спалахи блискавки на вікнах"
+                  >
+                    ⚡ Гроза
+                  </button>
+                  <button
                     onClick={() => setIsEffectsDrawerOpen(true)}
                     className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-400/30 rounded-lg transition-colors cursor-pointer"
                   >
-                    Анімації неба (10+)
+                    Усі ефекти (10+)
                   </button>
                   <button
                     onClick={handleNextWallpaper}
@@ -739,18 +803,6 @@ export default function App() {
                     className="px-2.5 py-1 glass-pill hover:bg-white/15 text-stone-200 rounded-lg transition-colors cursor-pointer"
                   >
                     Усі фони ({WALLPAPERS.length})
-                  </button>
-                  <button
-                    onClick={() => setFreePositionMode(!freePositionMode)}
-                    className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer flex items-center gap-1 ${
-                      freePositionMode
-                        ? 'bg-emerald-500/25 text-emerald-200 border border-emerald-400/40'
-                        : 'glass-pill hover:bg-white/15 text-stone-200'
-                    }`}
-                    title="У вільному режимі вікна залишаються в тих координатах, куди ви їх перетягнули"
-                  >
-                    <Move className="w-3 h-3" />
-                    <span>{freePositionMode ? 'Вільне положення: Увімк' : 'Режим: Пружна сітка'}</span>
                   </button>
                   <button
                     onClick={handleToggleCollapseAll}
@@ -772,7 +824,7 @@ export default function App() {
                   <button
                     onClick={handleResetLayout}
                     className="px-2.5 py-1 glass-pill hover:bg-white/15 text-stone-300 hover:text-white rounded-lg transition-colors cursor-pointer flex items-center gap-1"
-                    title="Скинути порядок та координати вікон за замовчуванням"
+                    title="Скинути порядок та координати вікон за замовчуванням (або двічі клікніть по перетягнутому вікну)"
                   >
                     <RotateCcw className="w-3 h-3" />
                     <span>Скинути вікна</span>

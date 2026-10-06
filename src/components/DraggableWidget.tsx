@@ -7,8 +7,9 @@ import {
   ArrowDown,
   Maximize2,
   Minimize2,
-  Pin,
+  RotateCcw,
 } from 'lucide-react';
+import { WidgetWeatherOverlay, ResolvedNatureEffect } from './WidgetWeatherOverlay';
 
 export interface DraggableWidgetProps {
   id: string;
@@ -26,6 +27,9 @@ export interface DraggableWidgetProps {
   onHoverTargetWidget: (targetId: string | null) => void;
   onEndPointerDrag: (sourceId: string, targetId: string | null) => void;
   onMoveOffset?: (id: string, direction: 'up' | 'down') => void;
+  onRestorePreviousOrder?: (id: string) => void;
+  hasOrderChanged?: boolean;
+  weatherEffect?: ResolvedNatureEffect;
   isDragging: boolean;
   isDragOver: boolean;
   children: React.ReactNode;
@@ -77,6 +81,9 @@ export const DraggableWidget: React.FC<DraggableWidgetProps> = ({
   onHoverTargetWidget,
   onEndPointerDrag,
   onMoveOffset,
+  onRestorePreviousOrder,
+  hasOrderChanged = false,
+  weatherEffect = 'none',
   isDragging,
   isDragOver,
   children,
@@ -84,13 +91,20 @@ export const DraggableWidget: React.FC<DraggableWidgetProps> = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
   const isPointerDownRef = useRef(false);
+  const hasMovedRef = useRef(false);
   const pointerStartRef = useRef({ clientX: 0, clientY: 0, baseX: 0, baseY: 0 });
   const lastPointerRef = useRef({ clientX: 0, clientY: 0, time: 0 });
   const hoveredTargetRef = useRef<string | null>(null);
 
+  // Track previous positions before dragging so double-click / double-tap returns to previous position
+  const previousOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const lastTapRef = useRef<{ time: number; x: number; y: number }>({ time: 0, x: 0, y: 0 });
+  const lastBodyTapRef = useRef<{ time: number; x: number; y: number }>({ time: 0, x: 0, y: 0 });
+
   const [isPinnedOffset, setIsPinnedOffset] = useState(
     savedOffset.x !== 0 || savedOffset.y !== 0
   );
+  const [justReturnedFlash, setJustReturnedFlash] = useState(false);
 
   const physRef = useRef<JellyPhysicsState>({
     x: savedOffset.x,
@@ -164,7 +178,7 @@ export const DraggableWidget: React.FC<DraggableWidgetProps> = ({
       p.targetSkewY = clamp(speedY * 0.18, -9, 9);
       p.targetRot = clamp(speedX * 0.25, -10, 10);
     } else {
-      // Elastic spring-back / settling when released
+      // Elastic spring-back / settling when released or returning on double-click
       const posStiffness = 0.15;
       const posDamping = 0.77;
       const ax = (p.targetX - p.x) * posStiffness;
@@ -175,11 +189,11 @@ export const DraggableWidget: React.FC<DraggableWidgetProps> = ({
       p.y += p.vy;
 
       // Coupled jelly squash & stretch from spring-back velocity
-      p.targetScaleX = 1 + clamp((Math.abs(p.vx) - Math.abs(p.vy)) * 0.004, -0.12, 0.14);
-      p.targetScaleY = 1 + clamp((Math.abs(p.vy) - Math.abs(p.vx)) * 0.004, -0.12, 0.14);
-      p.targetSkewX = 0;
+      p.targetScaleX = 1 + clamp((Math.abs(p.vx) - Math.abs(p.vy)) * 0.0045, -0.14, 0.16);
+      p.targetScaleY = 1 + clamp((Math.abs(p.vy) - Math.abs(p.vx)) * 0.0045, -0.14, 0.16);
+      p.targetSkewX = clamp(p.vx * 0.16, -8, 8);
       p.targetSkewY = 0;
-      p.targetRot = 0;
+      p.targetRot = clamp(p.vx * 0.12, -6, 6);
     }
 
     // Underdamped jelly oscillator for scale, skew, and rotation (high-elasticity jello feel)
@@ -238,7 +252,7 @@ export const DraggableWidget: React.FC<DraggableWidgetProps> = ({
     }
   }, [stepPhysics]);
 
-  // Trigger a playful jelly squish impulse (e.g., on grab, release, or collapse toggle)
+  // Trigger a playful jelly squish impulse
   const triggerJellyImpulse = useCallback(
     (impulseScaleX = 0.065, impulseScaleY = -0.065, impulseRot = 1.8) => {
       const p = physRef.current;
@@ -250,7 +264,7 @@ export const DraggableWidget: React.FC<DraggableWidgetProps> = ({
     [startPhysicsLoop]
   );
 
-  // Sync when savedOffset changes externally (e.g. "Скинути порядок")
+  // Sync when savedOffset changes externally
   useEffect(() => {
     const p = physRef.current;
     p.targetX = savedOffset.x;
@@ -267,35 +281,96 @@ export const DraggableWidget: React.FC<DraggableWidgetProps> = ({
     };
   }, []);
 
+  // Return widget to its previous position (on double-click / double-tap or reset button)
+  const handleReturnToPreviousPosition = useCallback(() => {
+    const p = physRef.current;
+    const isCurrentlyDisplaced =
+      Math.abs(p.targetX) > 1 || Math.abs(p.targetY) > 1 || isPinnedOffset;
+
+    if (isCurrentlyDisplaced) {
+      // Check if we have a non-zero previous offset or should return to home (0, 0)
+      const dest =
+        previousOffsetRef.current.x !== p.targetX || previousOffsetRef.current.y !== p.targetY
+          ? previousOffsetRef.current
+          : { x: 0, y: 0 };
+
+      // Once returned to dest, next double-click returns all the way to (0, 0)
+      previousOffsetRef.current = { x: 0, y: 0 };
+
+      p.targetX = dest.x;
+      p.targetY = dest.y;
+      setIsPinnedOffset(dest.x !== 0 || dest.y !== 0);
+      onSaveOffset(id, { x: dest.x, y: dest.y });
+      triggerJellyImpulse(0.13, -0.12, -3.2);
+
+      setJustReturnedFlash(true);
+      window.setTimeout(() => setJustReturnedFlash(false), 1600);
+      return;
+    }
+
+    if (hasOrderChanged && onRestorePreviousOrder) {
+      onRestorePreviousOrder(id);
+      triggerJellyImpulse(0.12, -0.11, -2.8);
+      setJustReturnedFlash(true);
+      window.setTimeout(() => setJustReturnedFlash(false), 1600);
+      return;
+    }
+
+    // Playful bounce even if already at home position
+    triggerJellyImpulse(0.08, -0.08, 1.5);
+  }, [
+    id,
+    isPinnedOffset,
+    hasOrderChanged,
+    onSaveOffset,
+    onRestorePreviousOrder,
+    triggerJellyImpulse,
+  ]);
+
   const handlePointerDownHeader = (e: React.PointerEvent<HTMLDivElement>) => {
     // Ignore if user clicked a button inside the header
     if ((e.target as HTMLElement).closest('button')) {
       return;
     }
 
+    const now = performance.now();
+    const dt = now - lastTapRef.current.time;
+    const tapDist = Math.hypot(e.clientX - lastTapRef.current.x, e.clientY - lastTapRef.current.y);
+
+    // Detect double-click / double-tap on header (< 360ms and < 24px)
+    if (dt > 25 && dt < 360 && tapDist < 24) {
+      e.preventDefault();
+      isPointerDownRef.current = false;
+      lastTapRef.current = { time: 0, x: 0, y: 0 };
+      handleReturnToPreviousPosition();
+      return;
+    }
+
+    lastTapRef.current = { time: now, x: e.clientX, y: e.clientY };
+
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
 
     const p = physRef.current;
     isPointerDownRef.current = true;
+    hasMovedRef.current = false;
     hoveredTargetRef.current = null;
 
     pointerStartRef.current = {
       clientX: e.clientX,
       clientY: e.clientY,
-      baseX: p.x,
-      baseY: p.y,
+      baseX: p.targetX,
+      baseY: p.targetY,
     };
     lastPointerRef.current = {
       clientX: e.clientX,
       clientY: e.clientY,
-      time: performance.now(),
+      time: now,
     };
 
     // Initial grab jelly pop
-    p.vScaleX += 0.045;
+    p.vScaleX += 0.04;
     p.vScaleY -= 0.035;
-    onStartPointerDrag(id);
     startPhysicsLoop();
   };
 
@@ -304,6 +379,14 @@ export const DraggableWidget: React.FC<DraggableWidgetProps> = ({
 
     const dx = e.clientX - pointerStartRef.current.clientX;
     const dy = e.clientY - pointerStartRef.current.clientY;
+
+    if (!hasMovedRef.current) {
+      if (Math.hypot(dx, dy) < 5) {
+        return;
+      }
+      hasMovedRef.current = true;
+      onStartPointerDrag(id);
+    }
 
     const p = physRef.current;
     p.targetX = pointerStartRef.current.baseX + dx;
@@ -315,7 +398,7 @@ export const DraggableWidget: React.FC<DraggableWidgetProps> = ({
       time: performance.now(),
     };
 
-    // Detect if pointer is over another widget card for slot swapping
+    // Detect if pointer is over another widget card for optional slot swapping
     const elementsUnderPointer = document.elementsFromPoint(e.clientX, e.clientY);
     let foundWidgetId: string | null = null;
     for (const el of elementsUnderPointer) {
@@ -350,34 +433,43 @@ export const DraggableWidget: React.FC<DraggableWidgetProps> = ({
     const p = physRef.current;
     const targetWidget = hoveredTargetRef.current;
 
-    if (targetWidget) {
-      // Swapping places with target widget: reset offset to (0, 0) and play jelly bounce
+    // If user merely clicked without dragging (< 5px movement), do not alter saved position
+    if (!hasMovedRef.current) {
+      p.targetX = pointerStartRef.current.baseX;
+      p.targetY = pointerStartRef.current.baseY;
+      hoveredTargetRef.current = null;
+      startPhysicsLoop();
+      return;
+    }
+
+    // Record the position before this drag so double-click can return to it
+    previousOffsetRef.current = {
+      x: Math.round(pointerStartRef.current.baseX),
+      y: Math.round(pointerStartRef.current.baseY),
+    };
+
+    if (!freePositionMode && targetWidget) {
+      // Swapping places with target widget in Grid Mode: reset offset to (0, 0) and play jelly bounce
       p.targetX = 0;
       p.targetY = 0;
-      p.vScaleX += 0.09;
-      p.vScaleY -= 0.09;
+      p.vScaleX += 0.095;
+      p.vScaleY -= 0.095;
       p.vSkewX += clamp(p.vx * 0.4, -10, 10);
+      previousOffsetRef.current = { x: 0, y: 0 };
       onSaveOffset(id, { x: 0, y: 0 });
       setIsPinnedOffset(false);
       onEndPointerDrag(id, targetWidget);
-    } else if (freePositionMode || isPinnedOffset) {
-      // Stay at the dragged position with a jelly wobble
+    } else {
+      // Keep the window at the dragged coordinates so the user can double-click to return it!
       const finalX = Math.round(p.targetX);
       const finalY = Math.round(p.targetY);
       p.targetX = finalX;
       p.targetY = finalY;
-      p.vScaleX -= 0.075;
-      p.vScaleY += 0.075;
+      p.vScaleX -= 0.08;
+      p.vScaleY += 0.08;
       p.vRot += clamp(-p.vx * 0.25, -8, 8);
       onSaveOffset(id, { x: finalX, y: finalY });
       setIsPinnedOffset(finalX !== 0 || finalY !== 0);
-      onEndPointerDrag(id, null);
-    } else {
-      // Elastic snap back to grid slot with pronounced jelly oscillation
-      p.targetX = 0;
-      p.targetY = 0;
-      p.vScaleX += 0.085;
-      p.vScaleY -= 0.085;
       onEndPointerDrag(id, null);
     }
 
@@ -385,19 +477,48 @@ export const DraggableWidget: React.FC<DraggableWidgetProps> = ({
     startPhysicsLoop();
   };
 
-  const handleResetPin = () => {
-    const p = physRef.current;
-    p.targetX = 0;
-    p.targetY = 0;
-    setIsPinnedOffset(false);
-    onSaveOffset(id, { x: 0, y: 0 });
-    triggerJellyImpulse(0.08, -0.08, -2.5);
+  // Support double-clicking or double-tapping anywhere on the widget window (outside interactive controls)
+  const isInteractiveElement = (target: EventTarget | null): boolean => {
+    if (!(target instanceof HTMLElement)) return false;
+    return Boolean(
+      target.closest('button, input, select, textarea, a, label, audio, [role="slider"]')
+    );
   };
+
+  const handleWindowDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isInteractiveElement(e.target)) return;
+    handleReturnToPreviousPosition();
+  };
+
+  const handleWindowBodyPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isInteractiveElement(e.target)) return;
+    // Ignore if inside header (header already handles its own double-tap)
+    if ((e.target as HTMLElement).closest('[data-widget-header]')) return;
+
+    const now = performance.now();
+    const dt = now - lastBodyTapRef.current.time;
+    const dist = Math.hypot(
+      e.clientX - lastBodyTapRef.current.x,
+      e.clientY - lastBodyTapRef.current.y
+    );
+
+    if (dt > 25 && dt < 360 && dist < 24) {
+      lastBodyTapRef.current = { time: 0, x: 0, y: 0 };
+      handleReturnToPreviousPosition();
+      return;
+    }
+
+    lastBodyTapRef.current = { time: now, x: e.clientX, y: e.clientY };
+  };
+
+  const canReturnToPrevious = isPinnedOffset || hasOrderChanged;
 
   return (
     <div
       ref={containerRef}
       data-widget-id={id}
+      onDoubleClick={handleWindowDoubleClick}
+      onPointerDown={handleWindowBodyPointerDown}
       style={{ willChange: 'transform' }}
       className={`group/widget relative rounded-2xl select-none ${
         isWide ? 'lg:col-span-2' : 'col-span-1'
@@ -405,7 +526,7 @@ export const DraggableWidget: React.FC<DraggableWidgetProps> = ({
         isDragging
           ? 'z-50 shadow-[0_24px_60px_rgba(0,0,0,0.75)] ring-2 ring-amber-400/80'
           : isPinnedOffset
-          ? 'z-30 shadow-[0_18px_42px_rgba(0,0,0,0.6)] ring-1 ring-amber-400/35'
+          ? 'z-30 shadow-[0_18px_42px_rgba(0,0,0,0.65)] ring-1 ring-amber-400/45'
           : 'z-10'
       } ${
         isDragOver
@@ -413,19 +534,23 @@ export const DraggableWidget: React.FC<DraggableWidgetProps> = ({
           : ''
       }`}
     >
-      {/* Top Drag & Collapse Control Bar (Pointer & Touch enabled) */}
+      {/* Weather & Nature Reactive Overlay (Soaked rain & dripping drops from top, snowdrifts, leaves, etc.) */}
+      <WidgetWeatherOverlay effect={weatherEffect} isCollapsed={isCollapsed} />
+
+      {/* Top Drag & Collapse Control Bar (Pointer, Touch & Double-Click enabled) */}
       <div
+        data-widget-header="true"
         onPointerDown={handlePointerDownHeader}
         onPointerMove={handlePointerMoveHeader}
         onPointerUp={handlePointerUpOrCancel}
         onPointerCancel={handlePointerUpOrCancel}
         style={{ touchAction: 'none' }}
-        className={`flex items-center justify-between gap-2 px-4 py-2.5 select-none transition-colors ${
+        className={`relative z-30 flex items-center justify-between gap-2 px-4 py-2.5 select-none transition-colors ${
           isCollapsed
             ? 'glass-panel rounded-2xl border border-white/15 hover:border-amber-400/50'
             : 'bg-stone-950/70 backdrop-blur-md border-x border-t border-white/15 rounded-t-2xl hover:bg-stone-900/75'
         } cursor-grab active:cursor-grabbing`}
-        title="Потягніть мишкою або пальцем, щоб перемістити вікно з ефектом желе"
+        title="Потягніть, щоб перемістити з ефектом желе · Натисніть двічі (2× клік) на вікно, щоб повернути на попереднє положення"
       >
         <div className="flex items-center gap-2 min-w-0 pointer-events-none">
           <GripVertical className="w-4 h-4 text-amber-300/80 group-hover/widget:text-amber-300 transition-colors shrink-0" />
@@ -442,16 +567,23 @@ export const DraggableWidget: React.FC<DraggableWidgetProps> = ({
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
-          {/* Pin / Reset Free Offset Button */}
-          {isPinnedOffset && (
+          {/* Brief confirmation pill when returned via double-click */}
+          {justReturnedFlash && (
+            <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-emerald-500/25 text-emerald-200 border border-emerald-400/40 animate-pulse">
+              ↺ Повернуто на місце
+            </span>
+          )}
+
+          {/* Double-click / Reset Previous Position Indicator */}
+          {canReturnToPrevious && !justReturnedFlash && (
             <button
               type="button"
-              onClick={handleResetPin}
+              onClick={handleReturnToPreviousPosition}
               className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] bg-amber-500/20 text-amber-200 border border-amber-400/40 hover:bg-amber-500/30 transition-colors cursor-pointer"
-              title="Повернути вікно назад у сітку"
+              title="Натисніть або двічі клікніть по вікну, щоб повернути його на попереднє положення"
             >
-              <Pin className="w-3 h-3" />
-              <span className="hidden sm:inline">У сітку</span>
+              <RotateCcw className="w-3 h-3" />
+              <span className="hidden sm:inline">2× клік — назад</span>
             </button>
           )}
 
@@ -527,7 +659,7 @@ export const DraggableWidget: React.FC<DraggableWidgetProps> = ({
 
       {/* Widget Body */}
       {!isCollapsed && (
-        <div className="flex-1 flex flex-col [&>.glass-panel]:rounded-t-none [&>.glass-panel]:border-t-0">
+        <div className="relative z-10 flex-1 flex flex-col [&>.glass-panel]:rounded-t-none [&>.glass-panel]:border-t-0">
           {children}
         </div>
       )}

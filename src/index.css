@@ -220,3 +220,234 @@
   animation: kenBurnsBreath 28s ease-in-out infinite;
 }
 
+/* ==========================================================================
+   Weather-Reactive Widget Animations (Rain Soaking & Dripping, Snow, Leaves, etc.)
+   ========================================================================== */
+
+/* Water droplet swelling at top rim and falling down across the widget */
+@keyframes widgetDropFall {
+  0% {
+    transform: translateY(-2px) scale(0.45, 0.45);
+    opacity: 0;
+  }
+  12% {
+    transform: translateY(1px) scale(1.05, 0.9);
+    opacity: 0.95;
+  }
+  26% {
+    transform: translateY(4px) scale(0.92, 1.18);
+    opacity: 1;
+  }
+  88% {
+    transform: translateY(185px) scale(0.85, 1.25);
+    opacity: 0.85;
+  }
+  100% {
+    transform: translateY(230px) scale(1.3, 0.4);
+    opacity: 0;
+  }
+}
+
+/* Wet rivulet streak trailing down from the top edge of the widget */
+@keyframes widgetRivuletStreak {
+  0% {
+    height: 0px;
+    opacity: 0;
+  }
+  20% {
+    height: 18px;
+    opacity: 0.55;
+  }
+  75% {
+    height: 155px;
+    opacity: 0.45;
+  }
+  100% {
+    height: 195px;
+    opacity: 0;
+  }
+}
+
+/* Hanging water bead trembling on the top border of a soaked widget */
+@keyframes widgetDropSwell {
+  0%, 100% {
+    transform: translateY(0px) scale(0.92, 0.95);
+    opacity: 0.85;
+  }
+  50% {
+    transform: translateY(2.5px) scale(1.08, 1.16);
+    opacity: 1;
+  }
+}
+
+/* Raindrop splash ring on the top edge of the widget */
+@keyframes widgetTopSplash {
+  0% {
+    transform: scale(0.2, 0.2);
+    opacity: 0.95;
+  }
+  70% {
+    transform: scale(1.6, 0.65);
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(2.2, 0.8);
+    opacity: 0;
+  }
+}
+
+/* Wet water sheen rippling across the soaked widget glass */
+@keyframes widgetWetSheen {
+  0%, 100% {
+    opacity: 0.45;
+    background-position: 0% 0%;
+  }
+  50% {
+    opacity: 0.78;
+    background-position: 100% 100%;
+  }
+}
+
+/* Thunderstorm electric rim flash on soaked widget */
+@keyframes widgetThunderFlash {
+  0%, 86%, 100% {
+    opacity: 0;
+  }
+  89% {
+    opacity: 0.85;
+  }
+  91% {
+    opacity: 0.15;
+  }
+  94% {
+    opacity: 0.95;
+  }
+  97% {
+    opacity: 0;
+  }
+}
+
+/* Snowflakes shedding from top snowdrift of the widget */
+@keyframes widgetSnowDriftDown {
+  0% {
+    transform: translateY(0px) translateX(0px) rotate(0deg) scale(0.7);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.95;
+  }
+  50% {
+    transform: translateY(75px) translateX(10px) rotate(120deg) scale(1);
+    opacity: 0.85;
+  }
+  85% {
+    opacity: 0.7;
+  }
+  100% {
+    transform: translateY(155px) translateX(-8px) rotate(260deg) scale(0.6);
+    opacity: 0;
+  }
+}
+
+/* Autumn leaves swaying on top & fluttering down from widget top */
+@keyframes widgetLeafFlutterDown {
+  0% {
+    transform: translateY(-4px) translateX(0px) rotate(-12deg) scale(0.85);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.95;
+  }
+  45% {
+    transform: translateY(65px) translateX(16px) rotate(35deg) scale(1);
+    opacity: 0.9;
+  }
+  75% {
+    transform: translateY(125px) translateX(-10px) rotate(-25deg) scale(0.95);
+    opacity: 0.75;
+  }
+  100% {
+    transform: translateY(180px) translateX(12px) rotate(45deg) scale(0.7);
+    opacity: 0;
+  }
+}
+
+@keyframes widgetLeafSway {
+  0%, 100% {
+    transform: rotate(-8deg) translateY(0px);
+  }
+  50% {
+    transform: rotate(9deg) translateY(1.5px);
+  }
+}
+
+/* Sakura petals spiraling down from the top rim of the widget */
+@keyframes widgetSakuraFlutter {
+  0% {
+    transform: translateY(-3px) translateX(0px) rotate(0deg) scale(0.8);
+    opacity: 0;
+  }
+  18% {
+    opacity: 0.95;
+  }
+  50% {
+    transform: translateY(70px) translateX(-14px) rotate(110deg) scale(1.05);
+    opacity: 0.85;
+  }
+  100% {
+    transform: translateY(155px) translateX(10px) rotate(240deg) scale(0.75);
+    opacity: 0;
+  }
+}
+
+/* Mountain mist rolling over widget edges */
+@keyframes widgetMistRoll {
+  0%, 100% {
+    transform: translateX(-6%) scaleX(1.05);
+    opacity: 0.38;
+  }
+  50% {
+    transform: translateX(6%) scaleX(1.12);
+    opacity: 0.68;
+  }
+}
+
+/* Aurora ribbon flowing along widget top border */
+@keyframes widgetAuroraFlow {
+  0%, 100% {
+    filter: hue-rotate(0deg);
+    opacity: 0.65;
+    transform: scaleX(1);
+  }
+  50% {
+    filter: hue-rotate(38deg);
+    opacity: 0.95;
+    transform: scaleX(1.04);
+  }
+}
+
+/* Fireflies hovering & blinking on widget rim */
+@keyframes widgetFireflyHover {
+  0%, 100% {
+    transform: translateY(0px) translateX(0px) scale(0.85);
+    opacity: 0.3;
+  }
+  50% {
+    transform: translateY(-10px) translateX(6px) scale(1.25);
+    opacity: 1;
+  }
+}
+
+/* Sunbeams shimmering across widget top */
+@keyframes widgetSunShimmer {
+  0%, 100% {
+    opacity: 0.45;
+    transform: translateX(-8px) scaleY(0.95);
+  }
+  50% {
+    opacity: 0.85;
+    transform: translateX(8px) scaleY(1.08);
+  }
+}
+
+
