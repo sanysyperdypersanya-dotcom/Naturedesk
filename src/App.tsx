@@ -490,7 +490,7 @@ export default function App() {
           <DraggableWidget
             key="compass"
             {...sharedDragProps('compass')}
-            title="Навігаційний Компас та Азимут"
+            title="GPS Компас та Геолокація"
             summary={
               weather
                 ? `${weather.city} · Вітер ${weather.windDirection}°`
@@ -498,7 +498,19 @@ export default function App() {
             }
             icon={<Compass className="w-3.5 h-3.5 text-amber-300" />}
           >
-            <CompassWidget weather={weather} city={currentCity} />
+            <CompassWidget
+              weather={weather}
+              city={currentCity}
+              onGeoLocationDetected={(detectedCity) => {
+                setCurrentCity((prev) =>
+                  Math.abs(prev.lat - detectedCity.lat) < 0.005 &&
+                  Math.abs(prev.lng - detectedCity.lng) < 0.005 &&
+                  prev.name === detectedCity.name
+                    ? prev
+                    : detectedCity
+                );
+              }}
+            />
           </DraggableWidget>
         );
 

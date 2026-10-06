@@ -8,12 +8,15 @@ import {
   RotateCcw,
   Smartphone,
   Crosshair,
+  LocateFixed,
+  Mountain,
 } from 'lucide-react';
 import { CurrentWeather, CityOption } from '../types';
 
 interface CompassWidgetProps {
   weather: CurrentWeather | null;
   city: CityOption;
+  onGeoLocationDetected?: (city: CityOption) => void;
 }
 
 interface LandmarkTarget {
@@ -22,6 +25,20 @@ interface LandmarkTarget {
   subtitle: string;
   lat: number;
   lng: number;
+}
+
+interface LiveGeoState {
+  lat: number;
+  lng: number;
+  placeName: string;
+  regionName: string;
+  accuracyMeters: number | null;
+  altitudeMeters: number | null;
+  gpsHeading: number | null;
+  gpsSpeedKmh: number | null;
+  source: 'gps' | 'ip' | 'city';
+  loading: boolean;
+  error: string | null;
 }
 
 const LANDMARK_TARGETS: LandmarkTarget[] = [
@@ -38,6 +55,20 @@ const LANDMARK_TARGETS: LandmarkTarget[] = [
     subtitle: 'Міжгір’я · Закарпаття',
     lat: 48.6168,
     lng: 23.6857,
+  },
+  {
+    id: 'kyiv-center',
+    name: 'Київ · Софійська площа',
+    subtitle: 'Столиця України',
+    lat: 50.4528,
+    lng: 30.5144,
+  },
+  {
+    id: 'lviv-rynok',
+    name: 'Львів · Площа Ринок',
+    subtitle: 'Галичина',
+    lat: 49.8419,
+    lng: 24.0315,
   },
   {
     id: 'ai-petri',
@@ -82,6 +113,22 @@ function shortestAngleDelta(fromDeg: number, toDeg: number): number {
   return diff === -180 ? 180 : diff;
 }
 
+function formatDMS(decimalDeg: number, isLat: boolean): string {
+  const dir = isLat
+    ? decimalDeg >= 0
+      ? 'Пн'
+      : 'Пд'
+    : decimalDeg >= 0
+    ? 'Сх'
+    : 'Зх';
+  const abs = Math.abs(decimalDeg);
+  const deg = Math.floor(abs);
+  const minFloat = (abs - deg) * 60;
+  const min = Math.floor(minFloat);
+  const sec = Math.round((minFloat - min) * 60);
+  return `${deg}°${String(min).padStart(2, '0')}'${String(sec).padStart(2, '0')}" ${dir}`;
+}
+
 function getCardinalFullDescription(deg: number): {
   short: string;
   full: string;
@@ -110,7 +157,7 @@ function getCardinalFullDescription(deg: number): {
   return dirs[idx];
 }
 
-// Calculate Great-Circle Forward Azimuth (deg) and Haversine Distance (km)
+// Calculate Great-Circle Forward Azimuth (deg) and Haversine Distance (km) from user's exact GPS coordinates
 function calculateBearingAndDistance(
   lat1: number,
   lon1: number,
@@ -135,13 +182,17 @@ function calculateBearingAndDistance(
     Math.sin(dPhi / 2) * Math.sin(dPhi / 2) +
     Math.cos(phi1) * Math.cos(phi2) * Math.sin(dLambda / 2) * Math.sin(dLambda / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  const distanceKm = Math.round(6371 * c);
+  const distanceKm = Math.round(6371 * c * 10) / 10;
 
   return { bearing, distanceKm };
 }
 
-// Approximate Solar Azimuth based on local solar time and latitude
-function computeSolarAzimuth(lat: number, lng: number, now: Date): {
+// Approximate Solar Azimuth based on local solar time and user's exact GPS latitude/longitude
+function computeSolarAzimuth(
+  lat: number,
+  lng: number,
+  now: Date
+): {
   azimuth: number;
   elevation: number;
   isDaylight: boolean;
@@ -153,8 +204,7 @@ function computeSolarAzimuth(lat: number, lng: number, now: Date): {
   const diff = now.getTime() - start.getTime();
   const dayOfYear = Math.floor(diff / 86400000);
 
-  // Solar declination
-  const declination = 23.45 * Math.sin(toRad(((360 / 365) * (dayOfYear - 81))));
+  const declination = 23.45 * Math.sin(toRad((360 / 365) * (dayOfYear - 81)));
   const utcHours =
     now.getUTCHours() + now.getUTCMinutes() / 60 + now.getUTCSeconds() / 3600;
   const solarTime = (utcHours + lng / 15 + 24) % 24;
@@ -180,7 +230,26 @@ function computeSolarAzimuth(lat: number, lng: number, now: Date): {
   };
 }
 
-export const CompassWidget: React.FC<CompassWidgetProps> = ({ weather, city }) => {
+export const CompassWidget: React.FC<CompassWidgetProps> = ({
+  weather,
+  city,
+  onGeoLocationDetected,
+}) => {
+  // Live Geolocation State (powered by navigator.geolocation + reverse geocoding + elevation lookup)
+  const [geoState, setGeoState] = useState<LiveGeoState>({
+    lat: city.lat,
+    lng: city.lng,
+    placeName: city.name,
+    regionName: city.country,
+    accuracyMeters: null,
+    altitudeMeters: null,
+    gpsHeading: null,
+    gpsSpeedKmh: null,
+    source: 'city',
+    loading: true,
+    error: null,
+  });
+
   // Heading angle in degrees (0 = North, 90 = East, 180 = South, 270 = West)
   const [targetHeading, setTargetHeading] = useState<number>(0);
   const [displayHeading, setDisplayHeading] = useState<number>(0);
@@ -193,12 +262,233 @@ export const CompassWidget: React.FC<CompassWidgetProps> = ({ weather, city }) =
   const dialSvgRef = useRef<SVGSVGElement | null>(null);
   const physRef = useRef<{ angle: number; velocity: number }>({ angle: 0, velocity: 0 });
   const rafRef = useRef<number | null>(null);
+  const watchIdRef = useRef<number | null>(null);
+  const onGeoDetectedRef = useRef(onGeoLocationDetected);
+  onGeoDetectedRef.current = onGeoLocationDetected;
 
-  // Magnetic declination approximation for Eastern Europe / globe
+  // Reverse geocode + terrain elevation lookup for exact GPS coordinates
+  const enrichCoordinates = useCallback(
+    async (
+      lat: number,
+      lng: number,
+      accuracy: number | null,
+      altitude: number | null,
+      heading: number | null,
+      speedMs: number | null,
+      source: 'gps' | 'ip'
+    ) => {
+      let resolvedCity = source === 'gps' ? 'Моя GPS локація' : city.name;
+      let resolvedRegion = 'Україна';
+      let resolvedElevation = altitude !== null ? Math.round(altitude) : null;
+
+      try {
+        const revRes = await fetch(
+          `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=uk`
+        );
+        if (revRes.ok) {
+          const revData = await revRes.json();
+          resolvedCity =
+            revData.city ||
+            revData.locality ||
+            revData.principalSubdivision ||
+            resolvedCity;
+          resolvedRegion =
+            revData.principalSubdivision && revData.principalSubdivision !== resolvedCity
+              ? `${revData.principalSubdivision}, ${revData.countryName || ''}`
+              : revData.countryName || resolvedRegion;
+        }
+      } catch {}
+
+      if (resolvedElevation === null) {
+        try {
+          const elevRes = await fetch(
+            `https://api.open-meteo.com/v1/elevation?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}`
+          );
+          if (elevRes.ok) {
+            const elevData = await elevRes.json();
+            if (Array.isArray(elevData.elevation) && typeof elevData.elevation[0] === 'number') {
+              resolvedElevation = Math.round(elevData.elevation[0]);
+            }
+          }
+        } catch {}
+      }
+
+      setGeoState({
+        lat,
+        lng,
+        placeName: resolvedCity,
+        regionName: resolvedRegion,
+        accuracyMeters: accuracy !== null ? Math.round(accuracy) : null,
+        altitudeMeters: resolvedElevation,
+        gpsHeading:
+          heading !== null && !Number.isNaN(heading) ? normalizeDegrees(heading) : null,
+        gpsSpeedKmh:
+          speedMs !== null && !Number.isNaN(speedMs) && speedMs > 0
+            ? Math.round(speedMs * 3.6 * 10) / 10
+            : null,
+        source,
+        loading: false,
+        error: null,
+      });
+
+      if (heading !== null && !Number.isNaN(heading) && heading >= 0) {
+        setTargetHeading(normalizeDegrees(heading));
+      }
+
+      if (onGeoDetectedRef.current) {
+        onGeoDetectedRef.current({
+          name: resolvedCity,
+          country: resolvedRegion,
+          lat,
+          lng,
+        });
+      }
+    },
+    [city.name]
+  );
+
+  // Fallback IP-based geolocation when hardware GPS permission is denied or blocked in iframe
+  const fetchIpGeolocationFallback = useCallback(
+    async (reasonMessage?: string) => {
+      try {
+        const res = await fetch('https://get.geojs.io/v1/ip/geo.json');
+        if (res.ok) {
+          const data = await res.json();
+          const lat = parseFloat(data.latitude);
+          const lng = parseFloat(data.longitude);
+          if (!Number.isNaN(lat) && !Number.isNaN(lng)) {
+            await enrichCoordinates(lat, lng, null, null, null, null, 'ip');
+            if (reasonMessage) {
+              setSensorStatus(reasonMessage);
+              window.setTimeout(() => setSensorStatus(null), 4000);
+            }
+            return;
+          }
+        }
+      } catch {}
+
+      setGeoState((prev) => ({
+        ...prev,
+        loading: false,
+        error: reasonMessage || null,
+      }));
+    },
+    [enrichCoordinates]
+  );
+
+  // Request & watch real browser GPS geolocation
+  const requestLiveGeolocation = useCallback(
+    (manualTrigger = false) => {
+      if (typeof navigator === 'undefined' || !navigator.geolocation) {
+        fetchIpGeolocationFallback('Браузер не підтримує GPS — визначено за геолокацією мережі');
+        return;
+      }
+
+      setGeoState((prev) => ({ ...prev, loading: true, error: null }));
+      if (manualTrigger) {
+        setSensorStatus('Визначаємо точні GPS-координати вашої геолокації...');
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const { latitude, longitude, accuracy, altitude, heading, speed } = pos.coords;
+          enrichCoordinates(
+            latitude,
+            longitude,
+            accuracy,
+            altitude,
+            heading,
+            speed,
+            'gps'
+          );
+          if (manualTrigger) {
+            setSensorStatus(
+              `GPS геолокацію оновлено (±${Math.round(accuracy || 10)} м)`
+            );
+            window.setTimeout(() => setSensorStatus(null), 3500);
+          }
+        },
+        () => {
+          fetchIpGeolocationFallback(
+            manualTrigger
+              ? 'Доступ до точного GPS обмежено — використовується геолокація вашої мережі'
+              : undefined
+          );
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 8000,
+          maximumAge: 15000,
+        }
+      );
+
+      // Continuous GPS watch so moving with a phone/laptop updates compass coordinates & heading live
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+      }
+      watchIdRef.current = navigator.geolocation.watchPosition(
+        (pos) => {
+          const { latitude, longitude, accuracy, altitude, heading, speed } = pos.coords;
+          setGeoState((prev) => ({
+            ...prev,
+            lat: latitude,
+            lng: longitude,
+            accuracyMeters: accuracy !== null ? Math.round(accuracy) : prev.accuracyMeters,
+            altitudeMeters:
+              altitude !== null ? Math.round(altitude) : prev.altitudeMeters,
+            gpsHeading:
+              heading !== null && !Number.isNaN(heading)
+                ? normalizeDegrees(heading)
+                : prev.gpsHeading,
+            gpsSpeedKmh:
+              speed !== null && !Number.isNaN(speed) && speed > 0
+                ? Math.round(speed * 3.6 * 10) / 10
+                : prev.gpsSpeedKmh,
+            source: 'gps',
+            loading: false,
+          }));
+          if (heading !== null && !Number.isNaN(heading) && heading >= 0) {
+            setTargetHeading(normalizeDegrees(heading));
+          }
+        },
+        () => {},
+        {
+          enableHighAccuracy: true,
+          maximumAge: 10000,
+        }
+      );
+    },
+    [enrichCoordinates, fetchIpGeolocationFallback]
+  );
+
+  // Automatically start geolocation tracking on mount
+  useEffect(() => {
+    requestLiveGeolocation(false);
+    return () => {
+      if (watchIdRef.current !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+      }
+    };
+  }, [requestLiveGeolocation]);
+
+  // If user manually switches city in WeatherCard while not locked to GPS, keep fallback synced
+  useEffect(() => {
+    if (geoState.source === 'city') {
+      setGeoState((prev) => ({
+        ...prev,
+        lat: city.lat,
+        lng: city.lng,
+        placeName: city.name,
+        regionName: city.country,
+      }));
+    }
+  }, [city.lat, city.lng, city.name, city.country, geoState.source]);
+
+  // World Magnetic Model (WMM) magnetic declination calculated from user's exact geolocation (lat, lng)
   const magneticDeclination = useMemo(() => {
-    const base = 7.8 + (city.lng - 30.5) * 0.14 + (city.lat - 50.4) * 0.08;
+    const base = 7.8 + (geoState.lng - 30.5) * 0.14 + (geoState.lat - 50.4) * 0.08;
     return Math.round(base * 10) / 10;
-  }, [city.lat, city.lng]);
+  }, [geoState.lat, geoState.lng]);
 
   const effectiveHeading = useMemo(() => {
     return normalizeDegrees(
@@ -210,8 +500,8 @@ export const CompassWidget: React.FC<CompassWidgetProps> = ({ weather, city }) =
   const windSpeed = weather?.windSpeed ?? 12;
 
   const solarData = useMemo(
-    () => computeSolarAzimuth(city.lat, city.lng, new Date()),
-    [city.lat, city.lng]
+    () => computeSolarAzimuth(geoState.lat, geoState.lng, new Date()),
+    [geoState.lat, geoState.lng]
   );
 
   const selectedLandmark = useMemo(
@@ -222,12 +512,12 @@ export const CompassWidget: React.FC<CompassWidgetProps> = ({ weather, city }) =
   const landmarkTelemetry = useMemo(
     () =>
       calculateBearingAndDistance(
-        city.lat,
-        city.lng,
+        geoState.lat,
+        geoState.lng,
         selectedLandmark.lat,
         selectedLandmark.lng
       ),
-    [city.lat, city.lng, selectedLandmark]
+    [geoState.lat, geoState.lng, selectedLandmark]
   );
 
   // Smooth spring-damped needle & dial physics loop
@@ -367,32 +657,69 @@ export const CompassWidget: React.FC<CompassWidgetProps> = ({ weather, city }) =
   return (
     <div className="glass-panel rounded-2xl p-5 md:p-6 transition-all duration-300 flex flex-col justify-between h-full">
       <div>
-        {/* Top Header */}
+        {/* Top Header with Live GPS Geolocation Status & Trigger */}
         <div className="flex flex-wrap items-center justify-between pb-3 border-b border-white/10 gap-2">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-7 h-7 rounded-full bg-amber-500/20 border border-amber-400/40 flex items-center justify-center shrink-0">
               <Compass className="w-4 h-4 text-amber-300" />
             </div>
             <div className="min-w-0">
-              <h3 className="text-sm font-semibold text-white truncate">
-                Навігаційний Компас та Азимут
-              </h3>
-              <p className="text-[11px] text-stone-400 truncate">
-                {city.name} · {city.lat.toFixed(2)}°N, {city.lng.toFixed(2)}°E · Схилення +{magneticDeclination}°
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-white truncate">
+                  GPS Компас та Геолокація
+                </h3>
+                <span
+                  className={`text-[10px] font-medium whitespace-nowrap ${
+                    geoState.source === 'gps'
+                      ? 'text-emerald-300'
+                      : geoState.source === 'ip'
+                      ? 'text-sky-300'
+                      : 'text-amber-300'
+                  }`}
+                >
+                  {geoState.loading
+                    ? '● Пошук GPS...'
+                    : geoState.source === 'gps'
+                    ? `● GPS ±${geoState.accuracyMeters ?? 12}м`
+                    : geoState.source === 'ip'
+                    ? '● Геолокація мережі'
+                    : '● Координати міста'}
+                </span>
+              </div>
+              <p className="text-[11px] text-stone-300 truncate font-data-mono">
+                {geoState.placeName} · {formatDMS(geoState.lat, true)}, {formatDMS(geoState.lng, false)}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
+            {/* Primary GPS Geolocation Button */}
+            <button
+              type="button"
+              onClick={() => requestLiveGeolocation(true)}
+              disabled={geoState.loading}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                geoState.source === 'gps'
+                  ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/40 hover:bg-emerald-500/30'
+                  : 'bg-amber-500/20 text-amber-200 border border-amber-400/40 hover:bg-amber-500/30'
+              }`}
+              title="Оновити точні GPS-координати моєї поточної геолокації"
+            >
+              <LocateFixed className={`w-3.5 h-3.5 ${geoState.loading ? 'animate-spin' : ''}`} />
+              <span>Моя геолокація</span>
+            </button>
+
             <button
               type="button"
               onClick={() => setTrueNorthMode(!trueNorthMode)}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
+              className={`px-2 py-1 rounded-lg text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
                 trueNorthMode
-                  ? 'bg-amber-500/20 text-amber-200 border border-amber-400/40'
+                  ? 'bg-white/15 text-amber-200 border border-amber-400/30'
                   : 'glass-pill text-stone-300 hover:text-white'
               }`}
-              title="Перемкнути між Істинною (географічною) та Магнітною північчю"
+              title={`Перемкнути між Істинною та Магнітною північчю (схилення ${
+                magneticDeclination >= 0 ? `+${magneticDeclination}` : magneticDeclination
+              }°)`}
             >
               {trueNorthMode ? 'Істинна Пн' : 'Магнітна Пн'}
             </button>
@@ -421,8 +748,33 @@ export const CompassWidget: React.FC<CompassWidgetProps> = ({ weather, city }) =
           </div>
         </div>
 
+        {/* Live Geolocation Coordinates & Elevation Bar */}
+        <div className="mt-2.5 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/10 flex flex-wrap items-center justify-between gap-2 text-[11px] text-stone-300">
+          <div className="flex items-center gap-2 min-w-0">
+            <MapPin className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span className="truncate">
+              <strong>{geoState.placeName}</strong>
+              {geoState.regionName ? ` (${geoState.regionName})` : ''}
+            </span>
+          </div>
+          <div className="flex items-center gap-3 font-data-mono text-stone-300 tabular-nums">
+            <span>
+              {geoState.lat.toFixed(4)}°N, {geoState.lng.toFixed(4)}°E
+            </span>
+            {geoState.altitudeMeters !== null && (
+              <span className="flex items-center gap-1 text-amber-300">
+                <Mountain className="w-3 h-3" />
+                <span>{geoState.altitudeMeters} м</span>
+              </span>
+            )}
+            <span className="text-stone-400">
+              Схилення {magneticDeclination >= 0 ? `+${magneticDeclination}` : magneticDeclination}°
+            </span>
+          </div>
+        </div>
+
         {sensorStatus && (
-          <div className="mt-2.5 px-3 py-1.5 rounded-xl bg-white/10 border border-white/15 text-[11px] text-amber-200 flex items-center justify-between">
+          <div className="mt-2 px-3 py-1.5 rounded-xl bg-white/10 border border-white/15 text-[11px] text-amber-200 flex items-center justify-between">
             <span>{sensorStatus}</span>
             <button
               type="button"
@@ -492,7 +844,7 @@ export const CompassWidget: React.FC<CompassWidgetProps> = ({ weather, city }) =
                 strokeDasharray="2 4"
               />
 
-              {/* Rotating Azimuth Dial Group (rotates opposite to heading so current bearing aligns with top lubber mark) */}
+              {/* Rotating Azimuth Dial Group */}
               <g transform={`rotate(${(-effectiveHeading).toFixed(2)} 120 120)`}>
                 {/* 72 Precision Degree Ticks */}
                 {dialTicks.map(({ deg, isCardinal, isMajor, isMedium }) => {
@@ -575,10 +927,7 @@ export const CompassWidget: React.FC<CompassWidgetProps> = ({ weather, city }) =
                     stroke="#38bdf8"
                     strokeWidth="1.3"
                   />
-                  <path
-                    d="M120 22 L117 12 L120 14 L123 12 Z"
-                    fill="#38bdf8"
-                  />
+                  <path d="M120 22 L117 12 L120 14 L123 12 Z" fill="#38bdf8" />
                 </g>
 
                 {/* Live Solar Azimuth Marker on Rim (Golden Sun Orb) */}
@@ -603,22 +952,17 @@ export const CompassWidget: React.FC<CompassWidgetProps> = ({ weather, city }) =
                   />
                 </g>
 
-                {/* Selected Landmark Bearing Marker on Rim (Emerald Target Pin) */}
+                {/* Selected Landmark Bearing Marker from User's Geolocation (Emerald Target Pin) */}
                 <g transform={`rotate(${landmarkTelemetry.bearing} 120 120)`}>
-                  <path
-                    d="M120 23 L115 11 L120 13.5 L125 11 Z"
-                    fill="#34d399"
-                  />
+                  <path d="M120 23 L115 11 L120 13.5 L125 11 Z" fill="#34d399" />
                 </g>
 
                 {/* Magnetic North/South Precision Needle */}
                 <g>
-                  {/* North Half (Crimson Red) */}
                   <polygon
                     points="120,34 126.5,120 120,113 113.5,120"
                     fill="url(#northNeedleGrad)"
                   />
-                  {/* South Half (Silver-Stone) */}
                   <polygon
                     points="120,204 126.5,120 120,127 113.5,120"
                     fill="url(#southNeedleGrad)"
@@ -720,18 +1064,18 @@ export const CompassWidget: React.FC<CompassWidgetProps> = ({ weather, city }) =
               })}
             </div>
 
-            {/* Wind & Sun Azimuth Telemetry Row */}
+            {/* Wind & Sun Azimuth Telemetry Row (computed from user's geolocation) */}
             <div className="grid grid-cols-2 gap-2 text-xs">
               <button
                 type="button"
                 onClick={() => setTargetHeading(windDirection)}
                 className="p-2.5 rounded-xl bg-white/[0.03] hover:bg-sky-500/10 border border-white/10 hover:border-sky-400/40 text-left transition-colors cursor-pointer"
-                title="Натисніть, щоб повернути компас за напрямком вітру"
+                title="Натисніть, щоб повернути компас за напрямком вітру у вашій геолокації"
               >
                 <div className="flex items-center justify-between text-stone-400">
                   <span className="flex items-center gap-1">
                     <Wind className="w-3.5 h-3.5 text-sky-400" />
-                    <span>Вітер</span>
+                    <span>Вітер тут</span>
                   </span>
                   <span className="font-data-mono text-sky-300 tabular-nums">
                     {windDirection}°
@@ -746,12 +1090,12 @@ export const CompassWidget: React.FC<CompassWidgetProps> = ({ weather, city }) =
                 type="button"
                 onClick={() => setTargetHeading(solarData.azimuth)}
                 className="p-2.5 rounded-xl bg-white/[0.03] hover:bg-amber-500/10 border border-white/10 hover:border-amber-400/40 text-left transition-colors cursor-pointer"
-                title="Натисніть, щоб навести компас на поточний азимут Сонця"
+                title="Натисніть, щоб навести компас на поточний азимут Сонця у вашій геолокації"
               >
                 <div className="flex items-center justify-between text-stone-400">
                   <span className="flex items-center gap-1">
                     <Sun className="w-3.5 h-3.5 text-amber-300" />
-                    <span>Сонце</span>
+                    <span>Сонце тут</span>
                   </span>
                   <span className="font-data-mono text-amber-300 tabular-nums">
                     {Math.round(solarData.azimuth)}°
@@ -766,18 +1110,18 @@ export const CompassWidget: React.FC<CompassWidgetProps> = ({ weather, city }) =
         </div>
       </div>
 
-      {/* Bottom Geographic Landmark Bearing Finder */}
+      {/* Bottom Geographic Landmark Bearing Finder (calculated from user's live GPS geolocation) */}
       <div className="mt-4 pt-3 border-t border-white/10">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
           <div className="flex items-center gap-1.5 text-xs text-stone-300">
             <Crosshair className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Пеленг на природний орієнтир:</span>
+            <span>Пеленг від вашої геолокації ({geoState.placeName}):</span>
           </div>
           <button
             type="button"
             onClick={() => setTargetHeading(landmarkTelemetry.bearing)}
             className="flex items-center gap-1 text-xs font-data-mono text-emerald-300 hover:text-emerald-200 cursor-pointer"
-            title="Навести компас прямо на обраний орієнтир"
+            title="Навести компас прямо на обраний орієнтир від вашої поточної геолокації"
           >
             <Navigation className="w-3 h-3" />
             <span>
@@ -796,8 +1140,8 @@ export const CompassWidget: React.FC<CompassWidgetProps> = ({ weather, city }) =
                 onClick={() => {
                   setSelectedLandmarkId(item.id);
                   const { bearing } = calculateBearingAndDistance(
-                    city.lat,
-                    city.lng,
+                    geoState.lat,
+                    geoState.lng,
                     item.lat,
                     item.lng
                   );
