@@ -13,6 +13,7 @@ import { EclipseAndCelestialWidget } from './components/EclipseAndCelestialWidge
 import { FactCard } from './components/FactCard';
 import { WallpaperSwitcher } from './components/WallpaperSwitcher';
 import { AmbientSoundPanel } from './components/AmbientSoundPanel';
+import { MusicPlayerWidget } from './components/MusicPlayerWidget';
 import { ZenModeView } from './components/ZenModeView';
 import { DraggableWidget } from './components/DraggableWidget';
 import {
@@ -34,10 +35,13 @@ import {
   ChevronUp,
   ChevronDown,
   Move,
+  Shuffle,
+  Music,
 } from 'lucide-react';
 
 export type WidgetId =
   | 'weather'
+  | 'music'
   | 'precipitation'
   | 'moon'
   | 'starmap'
@@ -48,6 +52,7 @@ export type WidgetId =
 
 const DEFAULT_WIDGET_ORDER: WidgetId[] = [
   'weather',
+  'music',
   'precipitation',
   'moon',
   'starmap',
@@ -59,6 +64,7 @@ const DEFAULT_WIDGET_ORDER: WidgetId[] = [
 
 const DEFAULT_WIDE_WIDGETS: Record<WidgetId, boolean> = {
   weather: false,
+  music: false,
   precipitation: false,
   moon: false,
   starmap: false,
@@ -69,18 +75,24 @@ const DEFAULT_WIDE_WIDGETS: Record<WidgetId, boolean> = {
 };
 
 export default function App() {
-  const [currentWallpaper, setCurrentWallpaper] = useState<NatureWallpaper>(WALLPAPERS[0]);
+  const [currentWallpaper, setCurrentWallpaper] = useState<NatureWallpaper>(WALLPAPERS[1]); // Start with Aurora Fjord or Carpathian Mist
   const [isWallpaperDrawerOpen, setIsWallpaperDrawerOpen] = useState(false);
   const [autoCycleInterval, setAutoCycleInterval] = useState(0); // 0 = off
-  const [overlayOpacity, setOverlayOpacity] = useState(0.45);
+  const [overlayOpacity, setOverlayOpacity] = useState(0.42);
+  const [isWallpaperMotionEnabled, setIsWallpaperMotionEnabled] = useState(true);
+  const [parallaxOffset, setParallaxOffset] = useState({ x: 0, y: 0 });
   const [isZenMode, setIsZenMode] = useState(false);
   const [activeTab, setActiveTab] = useState<'all' | 'weather' | 'facts' | 'sounds'>('all');
   const [isMasterSoundActive, setIsMasterSoundActive] = useState(false);
+  const [musicStatus, setMusicStatus] = useState<{ isPlaying: boolean; title: string }>({
+    isPlaying: false,
+    title: 'Світанок у Карпатах (Lo-Fi Ambient)',
+  });
 
-  // Interactive Nature Effect State
-  const [natureEffect, setNatureEffect] = useState<NatureEffectType>('auto');
+  // Interactive Nature Effect State (default to wallpaper_match so each Brave background has its signature animation)
+  const [natureEffect, setNatureEffect] = useState<NatureEffectType>('wallpaper_match');
   const [effectIntensity, setEffectIntensity] = useState<number>(1.0);
-  const [resolvedEffectLabel, setResolvedEffectLabel] = useState<string>('Сонячне проміння');
+  const [resolvedEffectLabel, setResolvedEffectLabel] = useState<string>('Північне сяйво');
   const [isEffectsDrawerOpen, setIsEffectsDrawerOpen] = useState(false);
 
   // Weather State
@@ -88,6 +100,28 @@ export default function App() {
   const [weather, setWeather] = useState<CurrentWeather | null>(null);
   const [weatherLoading, setWeatherLoading] = useState(false);
   const [weatherError, setWeatherError] = useState<string | null>(null);
+
+  // Subtle 3D Mouse Parallax for Brave Background
+  useEffect(() => {
+    if (!isWallpaperMotionEnabled) {
+      setParallaxOffset({ x: 0, y: 0 });
+      return;
+    }
+    const handlePointerMove = (e: PointerEvent) => {
+      const nx = (e.clientX / window.innerWidth - 0.5) * -18;
+      const ny = (e.clientY / window.innerHeight - 0.5) * -12;
+      setParallaxOffset({ x: nx, y: ny });
+    };
+    window.addEventListener('pointermove', handlePointerMove, { passive: true });
+    return () => window.removeEventListener('pointermove', handlePointerMove);
+  }, [isWallpaperMotionEnabled]);
+
+  const handleNextWallpaper = useCallback(() => {
+    setCurrentWallpaper((prev) => {
+      const idx = WALLPAPERS.findIndex((w) => w.id === prev.id);
+      return WALLPAPERS[(idx + 1) % WALLPAPERS.length];
+    });
+  }, []);
 
   // Widget Order, Collapse, Span & Free Offset State
   const [widgetOrder, setWidgetOrder] = useState<WidgetId[]>(() => {
@@ -323,15 +357,20 @@ export default function App() {
   };
 
   const getHeaderEffectDisplay = () => {
-    if (natureEffect === 'auto') {
+    if (natureEffect === 'auto' || natureEffect === 'wallpaper_match') {
       return `Ефект: ${resolvedEffectLabel}`;
     }
     const map: Record<NatureEffectType, string> = {
       auto: 'За погодою',
+      wallpaper_match: 'Під фон',
       rain: 'Дощ',
+      thunderstorm: 'Гроза',
       snow: 'Снігопад',
       mist: 'Туман',
       leaves: 'Листопад',
+      sakura: 'Сакура',
+      aurora: 'Північне сяйво',
+      shooting_stars: 'Зорепад',
       sunbeams: 'Промені',
       fireflies: 'Світлячки',
       none: 'Без ефектів',
@@ -377,6 +416,31 @@ export default function App() {
               onRefresh={() => loadWeather(currentCity)}
               onSelectCity={(city) => setCurrentCity(city)}
               onDetectLocation={handleDetectLocation}
+            />
+          </DraggableWidget>
+        );
+
+      case 'music':
+        return (
+          <DraggableWidget
+            key="music"
+            {...sharedDragProps('music')}
+            title="Музичний плеєр"
+            summary={
+              musicStatus.isPlaying
+                ? `Грає: ${musicStatus.title}`
+                : musicStatus.title
+            }
+            icon={<Music className="w-3.5 h-3.5 text-amber-300" />}
+          >
+            <MusicPlayerWidget
+              onPlaybackChange={(playing, title) =>
+                setMusicStatus((prev) =>
+                  prev.isPlaying === playing && prev.title === title
+                    ? prev
+                    : { isPlaying: playing, title }
+                )
+              }
             />
           </DraggableWidget>
         );
@@ -462,7 +526,7 @@ export default function App() {
           <DraggableWidget
             key="wallpapers"
             {...sharedDragProps('wallpapers')}
-            title="Шпалери природи"
+            title="Фони у стилі Brave"
             summary={currentWallpaper.title}
             icon={<Image className="w-3.5 h-3.5 text-amber-300" />}
           >
@@ -471,22 +535,35 @@ export default function App() {
                 <div className="flex items-center justify-between pb-3 border-b border-white/10">
                   <div className="flex items-center gap-2">
                     <Image className="w-4 h-4 text-amber-300" />
-                    <h3 className="text-sm font-semibold text-white">Колекція фонів природи</h3>
+                    <h3 className="text-sm font-semibold text-white">
+                      Колекція фонів Brave ({WALLPAPERS.length})
+                    </h3>
                   </div>
-                  <button
-                    onClick={() => setIsWallpaperDrawerOpen(true)}
-                    className="text-xs text-amber-300 hover:underline cursor-pointer"
-                  >
-                    Всі фони ({WALLPAPERS.length})
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleNextWallpaper}
+                      className="text-xs text-emerald-300 hover:text-emerald-200 flex items-center gap-1 cursor-pointer"
+                      title="Випадковий / Наступний фон"
+                    >
+                      <Shuffle className="w-3 h-3" />
+                      <span>Наступний</span>
+                    </button>
+                    <span className="text-stone-600">·</span>
+                    <button
+                      onClick={() => setIsWallpaperDrawerOpen(true)}
+                      className="text-xs text-amber-300 hover:underline cursor-pointer"
+                    >
+                      Галерея
+                    </button>
+                  </div>
                 </div>
 
-                <div className="mt-4 space-y-2">
-                  {WALLPAPERS.slice(0, 3).map((wp) => (
+                <div className="mt-4 grid grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
+                  {WALLPAPERS.map((wp) => (
                     <button
                       key={wp.id}
                       onClick={() => setCurrentWallpaper(wp)}
-                      className={`w-full flex items-center gap-3 p-2 rounded-xl border text-left transition-all cursor-pointer ${
+                      className={`flex items-center gap-2.5 p-2 rounded-xl border text-left transition-all cursor-pointer ${
                         currentWallpaper.id === wp.id
                           ? 'bg-white/15 border-amber-400/50 ring-1 ring-amber-400/30'
                           : 'bg-white/5 border-white/5 hover:border-white/20'
@@ -496,7 +573,7 @@ export default function App() {
                         src={wp.imageSrc}
                         alt={wp.title}
                         referrerPolicy="no-referrer"
-                        className="w-12 h-10 object-cover rounded-lg shrink-0"
+                        className="w-12 h-9 object-cover rounded-lg shrink-0"
                       />
                       <div className="min-w-0 flex-1">
                         <div className="text-xs font-semibold text-white truncate">{wp.title}</div>
@@ -508,7 +585,7 @@ export default function App() {
               </div>
 
               <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between text-xs text-stone-400">
-                <span>Поточний краєвид:</span>
+                <span>{currentWallpaper.credit || 'Колекція Brave Nature'}</span>
                 <span className="text-stone-200 font-medium truncate max-w-[160px]">
                   {currentWallpaper.location}
                 </span>
@@ -542,30 +619,44 @@ export default function App() {
       return widgetOrder.filter((id) => weatherSet.includes(id));
     }
     if (activeTab === 'facts') return ['facts'];
-    if (activeTab === 'sounds') return ['sounds'];
+    if (activeTab === 'sounds') {
+      const soundSet: WidgetId[] = ['music', 'sounds'];
+      return widgetOrder.filter((id) => soundSet.includes(id));
+    }
     return widgetOrder;
   };
 
   return (
     <div className="relative min-h-screen w-full bg-stone-950 text-stone-100 flex flex-col justify-between overflow-x-hidden">
-      {/* Dynamic Nature Background */}
+      {/* Dynamic Nature Background with Ken Burns & 3D Mouse Parallax */}
       <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
         <div className="absolute inset-0 bg-gradient-to-br from-stone-900 via-stone-950 to-emerald-950/40" />
 
-        <img
-          src={currentWallpaper.imageSrc}
-          alt={currentWallpaper.title}
-          referrerPolicy="no-referrer"
-          className="absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ease-in-out scale-105 filter saturate-[1.05]"
-          style={{ opacity: 1 }}
-        />
+        <div
+          className="absolute inset-0 transition-transform duration-300 ease-out"
+          style={{
+            transform: isWallpaperMotionEnabled
+              ? `translate3d(${parallaxOffset.x.toFixed(1)}px, ${parallaxOffset.y.toFixed(1)}px, 0)`
+              : 'none',
+          }}
+        >
+          <img
+            key={currentWallpaper.id}
+            src={currentWallpaper.imageSrc}
+            alt={currentWallpaper.title}
+            referrerPolicy="no-referrer"
+            className={`w-full h-full object-cover transition-opacity duration-1000 ease-in-out filter saturate-[1.08] ${
+              isWallpaperMotionEnabled ? 'animate-ken-burns' : 'scale-105'
+            }`}
+          />
+        </div>
 
         <div
           className="absolute inset-0 transition-opacity duration-500"
           style={{
             backgroundColor: `rgba(10, 12, 16, ${overlayOpacity})`,
             backgroundImage:
-              'radial-gradient(ellipse at center, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.65) 100%)',
+              'radial-gradient(ellipse at center, rgba(0,0,0,0.12) 0%, rgba(0,0,0,0.65) 100%)',
           }}
         />
 
@@ -575,10 +666,11 @@ export default function App() {
         />
       </div>
 
-      {/* Interactive Weather & Nature Canvas */}
+      {/* Interactive Weather & Cosmic Canvas */}
       <InteractiveWeatherCanvas
         weather={weather}
         effectType={natureEffect}
+        recommendedWallpaperEffect={currentWallpaper.recommendedEffect}
         intensity={effectIntensity}
         onAutoEffectResolved={(label) => setResolvedEffectLabel(label)}
       />
@@ -617,13 +709,13 @@ export default function App() {
               sunsetTime={weather?.sunset}
             />
 
-            {/* Quick Interactive Nature & Jelly Window Control Ribbon */}
+            {/* Quick Interactive Nature, Brave Wallpaper & Jelly Window Control Ribbon */}
             <div className="my-2 flex items-center justify-center">
               <div className="glass-panel-subtle px-4 py-2 rounded-2xl border border-white/10 flex flex-wrap items-center justify-center gap-2.5 text-xs">
                 <div className="flex items-center gap-2 text-stone-300">
                   <Wind className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
                   <span>
-                    Живий ефект: <strong>{resolvedEffectLabel}</strong>
+                    Жива анімація: <strong>{resolvedEffectLabel}</strong>
                   </span>
                 </div>
 
@@ -632,13 +724,21 @@ export default function App() {
                     onClick={() => setIsEffectsDrawerOpen(true)}
                     className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-400/30 rounded-lg transition-colors cursor-pointer"
                   >
-                    Ефект атмосфери
+                    Анімації неба (10+)
+                  </button>
+                  <button
+                    onClick={handleNextWallpaper}
+                    className="px-2.5 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-400/30 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                    title="Перемкнути на наступний фон у стилі Brave"
+                  >
+                    <Shuffle className="w-3 h-3" />
+                    <span>Наступний фон</span>
                   </button>
                   <button
                     onClick={() => setIsWallpaperDrawerOpen(true)}
                     className="px-2.5 py-1 glass-pill hover:bg-white/15 text-stone-200 rounded-lg transition-colors cursor-pointer"
                   >
-                    Фото природи
+                    Усі фони ({WALLPAPERS.length})
                   </button>
                   <button
                     onClick={() => setFreePositionMode(!freePositionMode)}
@@ -691,27 +791,29 @@ export default function App() {
             </div>
           </main>
 
-          {/* Desktop Footer */}
+          {/* Desktop Footer with Brave-style Photo Attribution */}
           <footer className="w-full mt-8 py-5 border-t border-white/10 glass-panel-subtle text-xs text-stone-400">
             <div className="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
-              <div className="flex items-center gap-2">
-                <span className="font-serif-display font-medium text-stone-300">СЬОГОДНІ</span>
+              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                <span className="font-serif-display font-medium text-stone-200">СЬОГОДНІ</span>
                 <span aria-hidden="true">·</span>
-                <span>Тягніть будь-яке вікно мишкою чи пальцем за верхню панель із пружною анімацією желе</span>
+                <span className="text-amber-300/90 font-medium">{currentWallpaper.title}</span>
+                <span aria-hidden="true">·</span>
+                <span>{currentWallpaper.location}</span>
               </div>
               <div className="flex items-center gap-4 text-stone-400">
+                <button
+                  onClick={handleNextWallpaper}
+                  className="hover:text-emerald-300 transition-colors cursor-pointer"
+                >
+                  Наступний фон ↻
+                </button>
+                <span aria-hidden="true">·</span>
                 <button
                   onClick={() => setIsEffectsDrawerOpen(true)}
                   className="hover:text-amber-300 transition-colors cursor-pointer"
                 >
-                  Ефекти природи
-                </button>
-                <span aria-hidden="true">·</span>
-                <button
-                  onClick={() => setIsWallpaperDrawerOpen(true)}
-                  className="hover:text-amber-300 transition-colors cursor-pointer"
-                >
-                  Колекція краєвидів
+                  Анімації неба
                 </button>
                 <span aria-hidden="true">·</span>
                 <button
@@ -734,6 +836,8 @@ export default function App() {
         setAutoCycleInterval={setAutoCycleInterval}
         overlayOpacity={overlayOpacity}
         setOverlayOpacity={setOverlayOpacity}
+        isWallpaperMotionEnabled={isWallpaperMotionEnabled}
+        setIsWallpaperMotionEnabled={setIsWallpaperMotionEnabled}
         isOpen={isWallpaperDrawerOpen}
         onClose={() => setIsWallpaperDrawerOpen(false)}
       />

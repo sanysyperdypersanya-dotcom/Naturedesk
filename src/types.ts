@@ -4,6 +4,9 @@ export interface NatureWallpaper {
   subtitle: string;
   location: string;
   imageSrc: string;
+  category?: 'mountains' | 'night' | 'water' | 'forest';
+  credit?: string;
+  recommendedEffect?: string;
   palette: {
     accent: string;
     ambientGlow: string;

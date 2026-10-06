@@ -2,11 +2,15 @@ import React from 'react';
 import {
   Sparkles,
   CloudRain,
+  CloudLightning,
   Snowflake,
   CloudFog,
   Leaf,
+  Flower2,
   Sun,
-  Flame,
+  Orbit,
+  Waves,
+  Image,
   EyeOff,
   Sliders,
   Wind,
@@ -34,68 +38,97 @@ export const NatureEffectsBar: React.FC<NatureEffectsBarProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  const effectsList: { id: NatureEffectType; label: string; icon: React.ReactNode; desc: string }[] = [
+  const effectsList: {
+    id: NatureEffectType;
+    label: string;
+    icon: React.ReactNode;
+    desc: string;
+  }[] = [
+    {
+      id: 'wallpaper_match',
+      label: 'Під стиль фону',
+      icon: <Image className="w-4 h-4 text-amber-300" />,
+      desc: `Автоматично під обрані шпалери (${resolvedEffectLabel})`,
+    },
     {
       id: 'auto',
-      label: 'За погодою',
+      label: 'За погодою у місті',
       icon: <Wind className="w-4 h-4 text-sky-300" />,
-      desc: `Автоматично: зараз ${resolvedEffectLabel}`,
+      desc: 'Синхронізація з реальними даними метеостанції',
+    },
+    {
+      id: 'aurora',
+      label: 'Північне сяйво',
+      icon: <Waves className="w-4 h-4 text-emerald-300" />,
+      desc: 'Смарагдові та фіолетові хвилі Аврори на зоряному небі',
+    },
+    {
+      id: 'shooting_stars',
+      label: 'Зорепад та Метеори',
+      icon: <Orbit className="w-4 h-4 text-indigo-300" />,
+      desc: 'Мерехтливі зорі та яскраві падаючі метеори від руху миші',
+    },
+    {
+      id: 'sakura',
+      label: 'Пелюстки сакури',
+      icon: <Flower2 className="w-4 h-4 text-pink-300" />,
+      desc: 'Ніжно-рожеві пелюстки, що кружляють у весняному вітрі',
+    },
+    {
+      id: 'thunderstorm',
+      label: 'Гроза та Блискавки',
+      icon: <CloudLightning className="w-4 h-4 text-yellow-300" />,
+      desc: 'Косий дощ із розгалуженими спалахами блискавок у небі',
     },
     {
       id: 'rain',
       label: 'Живий дощ',
       icon: <CloudRain className="w-4 h-4 text-sky-400" />,
-      desc: 'Краплі дощу з бризками та відхиленням вітру',
+      desc: 'Краплі дощу з бризками та відхиленням від курсора',
     },
     {
       id: 'snow',
       label: 'Снігопад',
       icon: <Snowflake className="w-4 h-4 text-slate-100" />,
-      desc: 'Плавні лапаті сніжинки, що кружляють',
+      desc: 'Плавні лапаті сніжинки, що реагують на рух повітря',
     },
     {
       id: 'mist',
       label: 'Гірський туман',
       icon: <CloudFog className="w-4 h-4 text-indigo-200" />,
-      desc: 'Рухомі об’ємні хмари та серпанок над горами',
+      desc: 'Рухомі об’ємні хмари та серпанок над вершинами',
     },
     {
       id: 'leaves',
       label: 'Осінній листопад',
       icon: <Leaf className="w-4 h-4 text-amber-400" />,
-      desc: 'Багряне й золоте листя, що спадає з дерев',
+      desc: 'Багряне й золоте листя, що кружляє у повітрі',
     },
     {
       id: 'sunbeams',
       label: 'Сонячне проміння',
       icon: <Sun className="w-4 h-4 text-yellow-300" />,
-      desc: 'Теплі промені світла та сяючі порошинки',
+      desc: 'Теплі промені світла та сяючі золоті порошинки',
     },
     {
       id: 'fireflies',
       label: 'Нічні світлячки',
       icon: <Sparkles className="w-4 h-4 text-emerald-300" />,
-      desc: 'Таємничі сяючі вогники літніх сутінків',
-    },
-    {
-      id: 'none',
-      label: 'Без ефектів',
-      icon: <EyeOff className="w-4 h-4 text-stone-400" />,
-      desc: 'Чистий статичний краєвид',
+      desc: 'Таємничі біолюмінесцентні вогники у сутінках',
     },
   ];
 
   return (
     <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-4">
-      <div className="w-full max-w-2xl bg-stone-900 border border-white/15 rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in-95">
+      <div className="w-full max-w-3xl bg-stone-900 border border-white/15 rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between pb-3 border-b border-white/10">
           <div>
             <h3 className="text-base font-semibold text-white flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-amber-400" />
-              Інтерактивні погодні ефекти
+              Живі анімації атмосфери та космосу
             </h3>
             <p className="text-xs text-stone-400 mt-0.5">
-              Жива анімація атмосфери, яка взаємодіє з рухами вашої миші
+              Інтерактивні ефекти полотна, які реагують на рух миші та дотики пальцем
             </p>
           </div>
           <button
@@ -107,7 +140,7 @@ export const NatureEffectsBar: React.FC<NatureEffectsBarProps> = ({
         </div>
 
         {/* Effects Grid */}
-        <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
           {effectsList.map((eff) => {
             const isSelected = currentEffect === eff.id;
             return (
@@ -121,7 +154,7 @@ export const NatureEffectsBar: React.FC<NatureEffectsBarProps> = ({
                 }`}
               >
                 <div>
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center justify-between mb-1.5">
                     {eff.icon}
                     {isSelected && (
                       <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
@@ -145,12 +178,19 @@ export const NatureEffectsBar: React.FC<NatureEffectsBarProps> = ({
 
         {/* Interactive Tip & Intensity Slider */}
         <div className="mt-5 pt-4 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
-          <div className="flex items-center gap-2 text-stone-300">
-            <span className="p-1.5 rounded-lg bg-white/5 border border-white/10">💡</span>
-            <span className="leading-snug">
-              <strong>Порада:</strong> Проведіть курсором миші по екрану, щоб керувати потоками вітру,
-              рухом сніжинок чи листям!
-            </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onSelectEffect('none')}
+              className={`px-3 py-1.5 rounded-xl border flex items-center gap-1.5 transition-colors cursor-pointer ${
+                currentEffect === 'none'
+                  ? 'bg-white/20 border-white/40 text-white font-semibold'
+                  : 'bg-white/5 border-white/10 text-stone-400 hover:text-white'
+              }`}
+            >
+              <EyeOff className="w-3.5 h-3.5" />
+              <span>Вимкнути ефекти</span>
+            </button>
           </div>
 
           <div className="flex items-center gap-3 shrink-0 w-full sm:w-auto">
@@ -168,18 +208,18 @@ export const NatureEffectsBar: React.FC<NatureEffectsBarProps> = ({
               disabled={currentEffect === 'none'}
               className="w-28 accent-amber-400 cursor-pointer disabled:opacity-30"
             />
-            <span className="font-data-mono text-stone-300 w-8 text-right">
+            <span className="font-data-mono text-stone-300 w-9 text-right">
               {Math.round(intensity * 100)}%
             </span>
           </div>
         </div>
 
-        <div className="mt-5 flex justify-end">
+        <div className="mt-4 flex justify-end">
           <button
             onClick={onClose}
             className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-stone-950 font-semibold text-xs rounded-xl transition-colors cursor-pointer"
           >
-            Застосувати
+            Готово
           </button>
         </div>
       </div>

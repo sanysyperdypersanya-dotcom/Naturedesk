@@ -204,3 +204,19 @@
   }
 }
 
+@keyframes kenBurnsBreath {
+  0% {
+    transform: scale(1.06) translate3d(0px, 0px, 0px);
+  }
+  50% {
+    transform: scale(1.13) translate3d(-12px, -6px, 0px);
+  }
+  100% {
+    transform: scale(1.06) translate3d(0px, 0px, 0px);
+  }
+}
+
+.animate-ken-burns {
+  animation: kenBurnsBreath 28s ease-in-out infinite;
+}
+
