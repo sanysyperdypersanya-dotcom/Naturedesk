@@ -2,7 +2,7 @@
   <p style="font-size: 22px; font-weight: bold; margin-bottom: 8px;">
   Nature Desk
   </p>
-  <a href="https://naturedesk.netlify.app/" style="font-size: 14px;">
-    https://naturedesk.netlify.app/
+  <a href="[https://naturedesk.netlify.app/](https://naturedesk.vercel.app/)" style="font-size: 14px;">
+    https://[naturedesk.netlify.app/](https://naturedesk.vercel.app/)
   </a>
 </div>
