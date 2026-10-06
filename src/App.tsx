@@ -6,11 +6,14 @@ import { ambientSoundEngine } from './services/ambientAudio';
 import { HeaderBar } from './components/HeaderBar';
 import { ClockCenterpiece } from './components/ClockCenterpiece';
 import { WeatherCard } from './components/WeatherCard';
+import { PrecipitationWidget } from './components/PrecipitationWidget';
+import { MoonPhaseWidget } from './components/MoonPhaseWidget';
+import { StarMapWidget } from './components/StarMapWidget';
+import { EclipseAndCelestialWidget } from './components/EclipseAndCelestialWidget';
 import { FactCard } from './components/FactCard';
 import { WallpaperSwitcher } from './components/WallpaperSwitcher';
 import { AmbientSoundPanel } from './components/AmbientSoundPanel';
 import { DailyIntentions } from './components/DailyIntentions';
-import { BreathingExercise } from './components/BreathingExercise';
 import { ZenModeView } from './components/ZenModeView';
 import {
   InteractiveWeatherCanvas,
@@ -238,7 +241,7 @@ export default function App() {
             {/* Dynamic View Sections */}
             {activeTab === 'all' && (
               <div className="mt-4 space-y-6">
-                {/* 2-Column Desktop Grid for Weather & Fact */}
+                {/* Row 1: 2-Column Desktop Grid for Weather & Precipitation Radar */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
                   <div className="h-full">
                     <WeatherCard
@@ -251,17 +254,40 @@ export default function App() {
                   </div>
 
                   <div className="h-full">
-                    <FactCard />
+                    <PrecipitationWidget
+                      weather={weather}
+                      onTriggerRainEffect={() => setNatureEffect('rain')}
+                    />
                   </div>
                 </div>
 
-                {/* Secondary Row: Intentions, Breathing & Quick Nature Selector */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch">
+                {/* Row 2: Moon Phase & Interactive Star Map */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
                   <div className="h-full">
-                    <DailyIntentions />
+                    <MoonPhaseWidget />
+                  </div>
+
+                  <div className="h-full">
+                    <StarMapWidget
+                      cityName={currentCity.name}
+                      lat={currentCity.lat}
+                      lng={currentCity.lng}
+                    />
+                  </div>
+                </div>
+
+                {/* Row 3: Total Eclipses, Meteor Showers & Planets */}
+                <div>
+                  <EclipseAndCelestialWidget />
+                </div>
+
+                {/* Row 4: Facts, Intentions & Quick Nature Selector */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+                  <div className="h-full">
+                    <FactCard />
                   </div>
                   <div className="h-full">
-                    <BreathingExercise />
+                    <DailyIntentions />
                   </div>
                   <div className="h-full">
                     <div className="glass-panel rounded-2xl p-5 md:p-6 transition-all flex flex-col justify-between h-full">
@@ -331,14 +357,31 @@ export default function App() {
 
             {/* Weather & Sky Tab */}
             {activeTab === 'weather' && (
-              <div className="mt-4 max-w-4xl mx-auto w-full space-y-6">
-                <WeatherCard
-                  weather={weather}
-                  loading={weatherLoading}
-                  onRefresh={() => loadWeather(currentCity)}
-                  onSelectCity={(city) => setCurrentCity(city)}
-                  onDetectLocation={handleDetectLocation}
-                />
+              <div className="mt-4 w-full space-y-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+                  <WeatherCard
+                    weather={weather}
+                    loading={weatherLoading}
+                    onRefresh={() => loadWeather(currentCity)}
+                    onSelectCity={(city) => setCurrentCity(city)}
+                    onDetectLocation={handleDetectLocation}
+                  />
+                  <PrecipitationWidget
+                    weather={weather}
+                    onTriggerRainEffect={() => setNatureEffect('rain')}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+                  <MoonPhaseWidget />
+                  <StarMapWidget
+                    cityName={currentCity.name}
+                    lat={currentCity.lat}
+                    lng={currentCity.lng}
+                  />
+                </div>
+
+                <EclipseAndCelestialWidget />
               </div>
             )}
 
@@ -351,9 +394,8 @@ export default function App() {
 
             {/* Daily Intentions / Rhythm Tab */}
             {activeTab === 'intentions' && (
-              <div className="mt-4 max-w-4xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="mt-4 max-w-4xl mx-auto w-full space-y-6">
                 <DailyIntentions />
-                <BreathingExercise />
               </div>
             )}
 

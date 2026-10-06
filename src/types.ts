@@ -19,6 +19,8 @@ export interface WeatherCondition {
 export interface CurrentWeather {
   city: string;
   country: string;
+  lat: number;
+  lng: number;
   temp: number;
   feelsLike: number;
   condition: WeatherCondition;
@@ -26,12 +28,18 @@ export interface CurrentWeather {
   windSpeed: number;
   surfacePressure: number;
   uvIndex: number;
+  precipitation: number;
+  precipitationProbability: number;
+  dailyPrecipitationSum: number;
+  cloudCover: number;
   sunrise: string;
   sunset: string;
   hourly: {
     time: string;
     temp: number;
     weatherCode: number;
+    precipitationProbability: number;
+    precipitation: number;
   }[];
   isDaytime: boolean;
   updatedAt: string;

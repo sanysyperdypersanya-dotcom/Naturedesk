@@ -100,7 +100,7 @@ export async function fetchLiveWeather(
   cityName: string,
   countryName: string
 ): Promise<CurrentWeather> {
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m,surface_pressure&hourly=temperature_2m,weather_code&daily=sunrise,sunset,uv_index_max&timezone=auto`;
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,cloud_cover,weather_code,wind_speed_10m,surface_pressure&hourly=temperature_2m,weather_code,precipitation_probability,precipitation&daily=sunrise,sunset,uv_index_max,precipitation_sum,precipitation_probability_max&timezone=auto`;
 
   const response = await fetch(url);
   if (!response.ok) {
@@ -120,24 +120,32 @@ export async function fetchLiveWeather(
   };
 
   const currentHour = new Date().getHours();
-  // Build hourly array for next 10 hours
+  // Build hourly array for next 12 hours
   const hourly = [];
+  let currentPrecipProb = 0;
+
   if (data.hourly && data.hourly.time) {
     const times: string[] = data.hourly.time;
     const temps: number[] = data.hourly.temperature_2m;
     const codes: number[] = data.hourly.weather_code;
+    const probs: number[] = data.hourly.precipitation_probability || [];
+    const precips: number[] = data.hourly.precipitation || [];
 
     // Find current time index
     const nowIsoPrefix = new Date().toISOString().slice(0, 13);
     let startIndex = times.findIndex((t) => t.startsWith(nowIsoPrefix));
     if (startIndex === -1) startIndex = currentHour;
 
-    for (let i = startIndex; i < Math.min(startIndex + 10, times.length); i++) {
+    currentPrecipProb = Math.round(probs[startIndex] ?? daily?.precipitation_probability_max?.[0] ?? 15);
+
+    for (let i = startIndex; i < Math.min(startIndex + 12, times.length); i++) {
       const d = new Date(times[i]);
       hourly.push({
         time: d.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' }),
         temp: Math.round(temps[i]),
         weatherCode: codes[i],
+        precipitationProbability: Math.round(probs[i] ?? 0),
+        precipitation: Math.round((precips[i] ?? 0) * 10) / 10,
       });
     }
   }
@@ -145,6 +153,8 @@ export async function fetchLiveWeather(
   return {
     city: cityName,
     country: countryName,
+    lat,
+    lng,
     temp: Math.round(current.temperature_2m),
     feelsLike: Math.round(current.apparent_temperature),
     condition: mapWmoCode(current.weather_code, isDay),
@@ -152,6 +162,10 @@ export async function fetchLiveWeather(
     windSpeed: Math.round(current.wind_speed_10m),
     surfacePressure: Math.round(current.surface_pressure * 0.75006), // Convert hPa to mmHg
     uvIndex: Math.round((daily?.uv_index_max?.[0] ?? 2) * 10) / 10,
+    precipitation: Math.round((current.precipitation ?? 0) * 10) / 10,
+    precipitationProbability: currentPrecipProb,
+    dailyPrecipitationSum: Math.round((daily?.precipitation_sum?.[0] ?? 0) * 10) / 10,
+    cloudCover: Math.round(current.cloud_cover ?? 40),
     sunrise: formatTimeStr(daily?.sunrise?.[0]),
     sunset: formatTimeStr(daily?.sunset?.[0]),
     hourly,
