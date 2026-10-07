@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Sun, Sunset, Sunrise, Sparkles } from 'lucide-react';
+import { Sunset, Sunrise, Sparkles } from 'lucide-react';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface ClockCenterpieceProps {
   sunriseTime?: string;
@@ -10,6 +11,7 @@ export const ClockCenterpiece: React.FC<ClockCenterpieceProps> = ({
   sunriseTime = '07:05',
   sunsetTime = '18:35',
 }) => {
+  const { lang, tr } = useLanguage();
   const [time, setTime] = useState<Date>(new Date());
 
   useEffect(() => {
@@ -25,21 +27,25 @@ export const ClockCenterpiece: React.FC<ClockCenterpieceProps> = ({
 
   // Greeting logic
   const currentHour = time.getHours();
-  let greeting = 'Добрий день';
-  if (currentHour >= 5 && currentHour < 12) greeting = 'Доброго ранку';
-  else if (currentHour >= 12 && currentHour < 18) greeting = 'Доброго й теплого дня';
-  else if (currentHour >= 18 && currentHour < 23) greeting = 'Затишного вечора';
-  else greeting = 'Тихої та спокійної ночі';
+  let greeting = tr('Добрий день', 'Good afternoon');
+  if (currentHour >= 5 && currentHour < 12) {
+    greeting = tr('Доброго ранку', 'Good morning');
+  } else if (currentHour >= 12 && currentHour < 18) {
+    greeting = tr('Доброго й теплого дня', 'Have a warm and bright day');
+  } else if (currentHour >= 18 && currentHour < 23) {
+    greeting = tr('Затишного вечора', 'Have a cozy evening');
+  } else {
+    greeting = tr('Тихої та спокійної ночі', 'Have a peaceful night');
+  }
 
-  // Ukrainian date formatting
-  const formattedDate = new Intl.DateTimeFormat('uk-UA', {
+  // Locale-aware date formatting (Ukrainian or English)
+  const formattedDate = new Intl.DateTimeFormat(lang === 'en' ? 'en-US' : 'uk-UA', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
     year: 'numeric',
   }).format(time);
 
-  // Capitalize weekday
   const capitalizedDate = formattedDate.charAt(0).toUpperCase() + formattedDate.slice(1);
 
   // Calculate day of the year
@@ -69,10 +75,16 @@ export const ClockCenterpiece: React.FC<ClockCenterpieceProps> = ({
     const diffMin = sunriseMinutes - currentMinutes;
     const diffH = Math.floor(diffMin / 60);
     const diffM = diffMin % 60;
-    daylightStatus = `До сходу сонця ще ${diffH > 0 ? `${diffH} год ` : ''}${diffM} хв`;
+    daylightStatus =
+      lang === 'en'
+        ? `${diffH > 0 ? `${diffH}h ` : ''}${diffM}m until sunrise`
+        : `До сходу сонця ще ${diffH > 0 ? `${diffH} год ` : ''}${diffM} хв`;
   } else if (currentMinutes > sunsetMinutes) {
     daylightPercent = 100;
-    daylightStatus = 'Сонце вже зайшло · Нічний спокій';
+    daylightStatus = tr(
+      'Сонце вже зайшло · Нічний спокій',
+      'Sun has set · Night tranquility'
+    );
   } else {
     const totalDaylight = sunsetMinutes - sunriseMinutes;
     const elapsed = currentMinutes - sunriseMinutes;
@@ -80,7 +92,10 @@ export const ClockCenterpiece: React.FC<ClockCenterpieceProps> = ({
     const remainingMin = sunsetMinutes - currentMinutes;
     const remH = Math.floor(remainingMin / 60);
     const remM = remainingMin % 60;
-    daylightStatus = `Залишилось ${remH > 0 ? `${remH} год ` : ''}${remM} хв світлового дня`;
+    daylightStatus =
+      lang === 'en'
+        ? `${remH > 0 ? `${remH}h ` : ''}${remM}m of daylight remaining`
+        : `Залишилось ${remH > 0 ? `${remH} год ` : ''}${remM} хв світлового дня`;
   }
 
   return (
@@ -89,8 +104,12 @@ export const ClockCenterpiece: React.FC<ClockCenterpieceProps> = ({
       <div className="flex items-center gap-2 text-stone-300 text-xs md:text-sm font-medium tracking-wide mb-2">
         <Sparkles className="w-3.5 h-3.5 text-amber-300" />
         <span>{greeting}</span>
-        <span aria-hidden="true" className="text-stone-500">·</span>
-        <span className="text-amber-200/90">Сьогодні твій неповторний день</span>
+        <span aria-hidden="true" className="text-stone-500">
+          ·
+        </span>
+        <span className="text-amber-200/90">
+          {tr('Сьогодні твій неповторний день', 'Today is your unique day')}
+        </span>
       </div>
 
       {/* Hero Display Clock */}
@@ -103,18 +122,26 @@ export const ClockCenterpiece: React.FC<ClockCenterpieceProps> = ({
         </span>
       </div>
 
-      {/* Date in Ukrainian */}
+      {/* Date in Ukrainian or English */}
       <h1 className="mt-3 text-xl sm:text-2xl md:text-3xl font-serif-display font-medium text-stone-100 tracking-wide">
         {capitalizedDate}
       </h1>
 
       {/* Editorial metadata - Zero Pill Rule */}
       <div className="mt-3 flex flex-wrap items-center justify-center gap-2 sm:gap-3 text-xs sm:text-sm text-stone-300/90 font-medium">
-        <span>День {dayOfYear} із {totalDays}</span>
-        <span aria-hidden="true" className="text-stone-500">·</span>
-        <span>{weekNumber}-й тиждень року</span>
-        <span aria-hidden="true" className="text-stone-500">·</span>
-        <span className="text-amber-200">Осіння пора</span>
+        <span>
+          {lang === 'en' ? `Day ${dayOfYear} of ${totalDays}` : `День ${dayOfYear} із ${totalDays}`}
+        </span>
+        <span aria-hidden="true" className="text-stone-500">
+          ·
+        </span>
+        <span>
+          {lang === 'en' ? `Week ${weekNumber} of Year` : `${weekNumber}-й тиждень року`}
+        </span>
+        <span aria-hidden="true" className="text-stone-500">
+          ·
+        </span>
+        <span className="text-amber-200">{tr('Осіння пора', 'Autumn Season')}</span>
       </div>
 
       {/* Daylight progression ribbon */}

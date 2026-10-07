@@ -12,6 +12,7 @@ import {
   Mountain,
 } from 'lucide-react';
 import { CurrentWeather, CityOption } from '../types';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface CompassWidgetProps {
   weather: CurrentWeather | null;
@@ -235,6 +236,8 @@ export const CompassWidget: React.FC<CompassWidgetProps> = ({
   city,
   onGeoLocationDetected,
 }) => {
+  const { lang } = useLanguage();
+
   // Live Geolocation State (powered by navigator.geolocation + reverse geocoding + elevation lookup)
   const [geoState, setGeoState] = useState<LiveGeoState>({
     lat: city.lat,
@@ -277,13 +280,18 @@ export const CompassWidget: React.FC<CompassWidgetProps> = ({
       speedMs: number | null,
       source: 'gps' | 'ip'
     ) => {
-      let resolvedCity = source === 'gps' ? 'Моя GPS локація' : city.name;
-      let resolvedRegion = 'Україна';
+      let resolvedCity =
+        source === 'gps'
+          ? lang === 'en'
+            ? 'My GPS Location'
+            : 'Моя GPS локація'
+          : city.name;
+      let resolvedRegion = lang === 'en' ? 'Ukraine' : 'Україна';
       let resolvedElevation = altitude !== null ? Math.round(altitude) : null;
 
       try {
         const revRes = await fetch(
-          `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=uk`
+          `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=${lang}`
         );
         if (revRes.ok) {
           const revData = await revRes.json();
