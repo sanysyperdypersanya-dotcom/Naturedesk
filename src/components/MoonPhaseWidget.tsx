@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { Moon, ChevronLeft, ChevronRight, RotateCcw, Compass } from 'lucide-react';
+import { Moon, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useLanguage } from '../i18n/LanguageContext';
 
 const SYNODIC_MONTH = 29.530588853; // days
 // Known reference New Moon: 2000-01-06 18:14 UTC
@@ -139,6 +140,7 @@ function buildMoonLitPath(cx: number, cy: number, r: number, phaseRatio: number)
 }
 
 export const MoonPhaseWidget: React.FC = () => {
+  const { lang } = useLanguage();
   const [dayOffset, setDayOffset] = useState<number>(0);
 
   const targetDate = useMemo(() => {
@@ -172,20 +174,23 @@ export const MoonPhaseWidget: React.FC = () => {
         return {
           label: t.label,
           daysUntil: Math.round(daysUntil),
-          dateStr: phaseDate.toLocaleDateString('uk-UA', {
+          dateStr: phaseDate.toLocaleDateString(lang === 'en' ? 'en-US' : 'uk-UA', {
             day: 'numeric',
             month: 'short',
           }),
         };
       })
       .sort((a, b) => a.daysUntil - b.daysUntil);
-  }, []);
+  }, [lang]);
 
-  const formattedSelectedDate = targetDate.toLocaleDateString('uk-UA', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
+  const formattedSelectedDate = targetDate.toLocaleDateString(
+    lang === 'en' ? 'en-US' : 'uk-UA',
+    {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    }
+  );
 
   const litPath = buildMoonLitPath(75, 75, 58, lunar.phaseRatio);
 
